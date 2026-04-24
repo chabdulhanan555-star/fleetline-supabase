@@ -306,7 +306,7 @@ function ensureAuthenticatedClient() {
 async function invokeFunction(name, body) {
   const response = await ensureAuthenticatedClient().functions.invoke(name, { body });
   if (response.error) {
-    throw new Error(response.data?.error || response.error.message || `${name} failed.`);
+    throw new Error(await getFunctionErrorMessage(response.error, response.data, `${name} failed.`));
   }
 
   if (response.data?.error) {
@@ -314,6 +314,25 @@ async function invokeFunction(name, body) {
   }
 
   return response.data;
+}
+
+async function getFunctionErrorMessage(error, data, fallback) {
+  if (data?.error) {
+    return data.error;
+  }
+
+  const context = error?.context;
+  if (context && typeof context.clone === 'function') {
+    try {
+      const body = await context.clone().json();
+      if (body?.error) return body.error;
+      if (body?.message) return body.message;
+    } catch {
+      // Ignore parse failures and use the SDK message below.
+    }
+  }
+
+  return error?.message || fallback;
 }
 
 function mapEmployee(row) {
@@ -431,6 +450,11 @@ export async function getCurrentSession() {
   }
 
   if (riderSession?.accessToken && riderSession?.employee) {
+    if (riderSession.expiresAt && riderSession.expiresAt <= Date.now()) {
+      writeStoredRiderSession(null);
+      return null;
+    }
+
     return {
       role: 'rider',
       employee: riderSession.employee,
@@ -509,7 +533,7 @@ export async function riderLogin(username, pin) {
   });
 
   if (response.error) {
-    throw new Error(response.data?.error || response.error.message || 'Rider sign-in failed.');
+    throw new Error(await getFunctionErrorMessage(response.error, response.data, 'Rider sign-in failed.'));
   }
 
   if (response.data?.error) {
@@ -701,7 +725,7 @@ export async function uploadPhoto(employeeId, readingId, file) {
   const path = `readings/${employeeId}/${readingId}.jpg`;
   const { error } = await client.storage.from('odometer-photos').upload(path, file, {
     contentType: 'image/jpeg',
-    upsert: true,
+    upsert: false,
   });
 
   if (error) {
