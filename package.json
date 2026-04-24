@@ -1,0 +1,31 @@
+{
+  "name": "fleetline-supabase",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "supabase": "supabase",
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link",
+    "supabase:db:push": "supabase db push",
+    "supabase:functions:deploy": "supabase functions deploy rider-login invite-admin cleanup-old-photos reset-rider-pin"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.104.0",
+    "browser-image-compression": "^2.0.2",
+    "idb-keyval": "^6.2.2",
+    "lucide-react": "^1.8.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "supabase": "^2.95.1",
+    "tailwindcss": "^4.1.0",
+    "vite": "^8.0.9"
+  }
+}

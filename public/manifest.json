@@ -1,0 +1,28 @@
+{
+  "name": "FleetLine - Fuel & Fleet Manager",
+  "short_name": "FleetLine",
+  "description": "Daily odometer tracking and fuel analytics for small motorcycle fleets.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#ff6b1a",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Submit Reading",
+      "short_name": "Submit",
+      "description": "Submit today's odometer reading",
+      "url": "/?view=today"
+    }
+  ]
+}
