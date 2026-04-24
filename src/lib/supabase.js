@@ -6,6 +6,7 @@ const RIDER_SESSION_KEY = 'fleetline.rider-session.v1';
 const DEMO_STORE_KEY = 'fleetline.demo-store.v1';
 const DEMO_SESSION_KEY = 'fleetline.demo-session.v1';
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const isDemoMode = !isSupabaseConfigured && import.meta.env.DEV;
 
 if (!isSupabaseConfigured) {
   console.warn('[fleetline] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
@@ -30,7 +31,7 @@ const demoListeners = {
 
 let riderSession = isSupabaseConfigured ? readStoredRiderSession() : null;
 let riderClient = riderSession ? buildRiderClient(riderSession.accessToken) : null;
-let demoSession = !isSupabaseConfigured ? readStoredDemoSession() : null;
+let demoSession = isDemoMode ? readStoredDemoSession() : null;
 
 adminClient?.auth.onAuthStateChange(() => {
   notifySessionListeners();
@@ -301,6 +302,19 @@ function ensureAuthenticatedClient() {
   return client;
 }
 
+async function invokeFunction(name, body) {
+  const response = await ensureAuthenticatedClient().functions.invoke(name, { body });
+  if (response.error) {
+    throw new Error(response.data?.error || response.error.message || `${name} failed.`);
+  }
+
+  if (response.data?.error) {
+    throw new Error(response.data.error);
+  }
+
+  return response.data;
+}
+
 function mapEmployee(row) {
   return {
     id: row.id,
@@ -313,16 +327,6 @@ function mapEmployee(row) {
     active: row.active,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-  };
-}
-
-function mapEmployeeDirectory(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    username: row.username,
-    bikePlate: row.bike_plate,
-    bikeModel: row.bike_model ?? '',
   };
 }
 
@@ -372,14 +376,6 @@ function mapAuditLog(row) {
   };
 }
 
-function chunk(items, size) {
-  const chunks = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
-}
-
 async function refreshSubscription(query, callback) {
   const { data, error } = await query(ensureAuthenticatedClient());
   if (error) {
@@ -416,7 +412,7 @@ function subscribeTable({ table, filter, query, callback }) {
 export const supabase = adminClient;
 
 export async function getCurrentSession() {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     return demoSession;
   }
 
@@ -451,7 +447,7 @@ export function onSessionChange(listener) {
 }
 
 export async function adminLogin(email, password) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     if (!email || !password) {
       throw new Error('Email and password are required.');
     }
@@ -482,7 +478,7 @@ export async function adminLogin(email, password) {
 }
 
 export async function riderLogin(username, pin) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     const store = readDemoStore();
     const employee = store.employees.find(
       (row) => row.active && row.username.toLowerCase() === String(username).trim().toLowerCase(),
@@ -512,7 +508,11 @@ export async function riderLogin(username, pin) {
   });
 
   if (response.error) {
-    throw response.error;
+    throw new Error(response.data?.error || response.error.message || 'Rider sign-in failed.');
+  }
+
+  if (response.data?.error) {
+    throw new Error(response.data.error);
   }
 
   writeStoredRiderSession({
@@ -526,7 +526,7 @@ export async function riderLogin(username, pin) {
 }
 
 export async function signOut() {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     writeStoredDemoSession(null);
     await notifySessionListeners();
     return;
@@ -538,7 +538,7 @@ export async function signOut() {
 }
 
 export async function listActiveEmployees() {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     return readDemoStore()
       .employees
       .filter((employee) => employee.active)
@@ -552,24 +552,11 @@ export async function listActiveEmployees() {
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
-  if (!adminClient) {
-    return [];
-  }
-
-  const { data, error } = await adminClient
-    .from('employee_login_directory')
-    .select('id, name, username, bike_plate, bike_model')
-    .order('name');
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []).map(mapEmployeeDirectory);
+  throw new Error('Public rider directory is disabled.');
 }
 
 export function subscribeEmployees(callback) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     return demoSubscribe('employees', callback);
   }
 
@@ -585,7 +572,7 @@ export function subscribeEmployees(callback) {
 }
 
 export function subscribeReadings(callback) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     return demoSubscribe('readings', callback);
   }
 
@@ -602,7 +589,7 @@ export function subscribeReadings(callback) {
 }
 
 export function subscribeConfig(callback) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     return demoSubscribe('config', callback);
   }
 
@@ -615,7 +602,7 @@ export function subscribeConfig(callback) {
 }
 
 export async function saveEmployee(employee, options = {}) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     const store = readDemoStore();
     const now = new Date().toISOString();
 
@@ -670,62 +657,17 @@ export async function saveEmployee(employee, options = {}) {
     return omitDemoPin(nextEmployee);
   }
 
-  const client = ensureAuthenticatedClient();
-  const basePayload = {
-    name: employee.name.trim(),
-    username: employee.username.trim().toLowerCase(),
-    phone: employee.phone?.trim() || null,
-    bike_plate: employee.bikePlate.trim().toUpperCase(),
-    bike_model: employee.bikeModel?.trim() || null,
-    mileage: employee.mileage === '' || employee.mileage === null ? null : Number(employee.mileage),
-    active: employee.active ?? true,
-  };
+  const result = await invokeFunction('upsert-employee', {
+    employee,
+    is_new: Boolean(options.isNew),
+    pin: options.pin ? String(options.pin) : undefined,
+  });
 
-  if (options.isNew) {
-    if (!/^\d{4}$/.test(String(options.pin ?? ''))) {
-      throw new Error('A 4-digit PIN is required for new riders.');
-    }
-
-    const { data: pinHash, error: hashError } = await client.rpc('hash_rider_pin', {
-      pin_input: String(options.pin),
-    });
-
-    if (hashError || !pinHash) {
-      throw hashError ?? new Error('Failed to hash rider PIN.');
-    }
-
-    const { data, error } = await client
-      .from('employees')
-      .insert({
-        ...basePayload,
-        pin_hash: pinHash,
-      })
-      .select('id, name, username, phone, bike_plate, bike_model, mileage, active, created_at, updated_at')
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return mapEmployee(data);
-  }
-
-  const { data, error } = await client
-    .from('employees')
-    .update(basePayload)
-    .eq('id', employee.id)
-    .select('id, name, username, phone, bike_plate, bike_model, mileage, active, created_at, updated_at')
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return mapEmployee(data);
+  return mapEmployee(result.employee);
 }
 
 export async function deleteEmployee(employeeId) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     const store = readDemoStore();
     const before = store.employees.find((row) => row.id === employeeId);
     store.employees = store.employees.filter((row) => row.id !== employeeId);
@@ -742,33 +684,11 @@ export async function deleteEmployee(employeeId) {
     return;
   }
 
-  const client = ensureAuthenticatedClient();
-  const { data: readings, error: readingsError } = await client
-    .from('readings')
-    .select('photo_path')
-    .eq('employee_id', employeeId)
-    .not('photo_path', 'is', null);
-
-  if (readingsError) {
-    throw readingsError;
-  }
-
-  const photoPaths = (readings ?? []).map((reading) => reading.photo_path).filter(Boolean);
-  for (const pathChunk of chunk(photoPaths, 100)) {
-    const { error } = await client.storage.from('odometer-photos').remove(pathChunk);
-    if (error) {
-      throw error;
-    }
-  }
-
-  const { error } = await client.from('employees').delete().eq('id', employeeId);
-  if (error) {
-    throw error;
-  }
+  await invokeFunction('delete-employee', { employee_id: employeeId });
 }
 
 export async function uploadPhoto(employeeId, readingId, file) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     const path = `demo/readings/${employeeId}/${readingId}.jpg`;
     const store = readDemoStore();
     store.photos[path] = await blobToDataUrl(file);
@@ -791,7 +711,7 @@ export async function uploadPhoto(employeeId, readingId, file) {
 }
 
 export async function saveReading(reading) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     const store = readDemoStore();
     const row = {
       id: reading.id,
@@ -833,7 +753,7 @@ export async function saveReading(reading) {
 }
 
 export async function saveConfig(config) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     const store = readDemoStore();
     const before = { ...store.config };
     store.config = {
@@ -875,7 +795,7 @@ export async function saveConfig(config) {
 }
 
 export async function inviteAdmin(email, redirectTo) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     const store = readDemoStore();
     const admin = {
       userId: crypto.randomUUID(),
@@ -889,19 +809,11 @@ export async function inviteAdmin(email, redirectTo) {
     return { ok: true, admin, redirectTo };
   }
 
-  const response = await ensureAuthenticatedClient().functions.invoke('invite-admin', {
-    body: { email, redirectTo },
-  });
-
-  if (response.error) {
-    throw response.error;
-  }
-
-  return response.data;
+  return invokeFunction('invite-admin', { email, redirectTo });
 }
 
 export async function resetRiderPin(employeeId, newPin) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     if (!/^\d{4}$/.test(String(newPin))) {
       throw new Error('PIN must be exactly 4 digits.');
     }
@@ -925,22 +837,14 @@ export async function resetRiderPin(employeeId, newPin) {
     return { ok: true };
   }
 
-  const response = await ensureAuthenticatedClient().functions.invoke('reset-rider-pin', {
-    body: {
-      employee_id: employeeId,
-      new_pin: newPin,
-    },
+  return invokeFunction('reset-rider-pin', {
+    employee_id: employeeId,
+    new_pin: newPin,
   });
-
-  if (response.error) {
-    throw response.error;
-  }
-
-  return response.data;
 }
 
 export async function listAdmins() {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     return [...readDemoStore().admins];
   }
 
@@ -957,7 +861,7 @@ export async function listAdmins() {
 }
 
 export async function listAuditLog({ page = 0, pageSize = 20 } = {}) {
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     const rows = readDemoStore().auditLog;
     const from = page * pageSize;
     return {
@@ -993,7 +897,7 @@ export async function getSignedPhotoUrl(photoPath, expiresIn = 300) {
     return null;
   }
 
-  if (!isSupabaseConfigured) {
+  if (isDemoMode) {
     return readDemoStore().photos[photoPath] ?? null;
   }
 

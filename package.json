@@ -11,7 +11,7 @@
     "supabase:login": "supabase login",
     "supabase:link": "supabase link",
     "supabase:db:push": "supabase db push",
-    "supabase:functions:deploy": "supabase functions deploy rider-login invite-admin cleanup-old-photos reset-rider-pin"
+    "supabase:functions:deploy": "supabase functions deploy rider-login --no-verify-jwt && supabase functions deploy cleanup-old-photos --no-verify-jwt && supabase functions deploy invite-admin reset-rider-pin upsert-employee delete-employee"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.104.0",

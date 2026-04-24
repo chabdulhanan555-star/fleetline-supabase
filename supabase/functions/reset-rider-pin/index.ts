@@ -1,10 +1,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { getAdminCaller, safeEmployee } from '../_shared/admin.ts';
 import { corsHeaders, json } from '../_shared/cors.ts';
-import { readBearerToken, verifyHs256 } from '../_shared/jwt.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const jwtSecret = Deno.env.get('JWT_SECRET') ?? '';
 
 const service = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -20,22 +19,9 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const token = readBearerToken(request.headers.get('Authorization'));
-    if (!token) {
-      return json({ error: 'Missing bearer token.' }, 401);
-    }
-
-    const claims = await verifyHs256(token, jwtSecret);
-    const callerId = String(claims.sub ?? '');
-
-    const { data: adminRow } = await service
-      .from('admins')
-      .select('user_id')
-      .eq('user_id', callerId)
-      .maybeSingle();
-
-    if (!adminRow) {
-      return json({ error: 'Admin access required.' }, 403);
+    const caller = await getAdminCaller(request, service);
+    if (caller.error) {
+      return json({ error: caller.error.message }, caller.error.status);
     }
 
     const { employee_id: employeeId, new_pin: newPin } = await request.json();
@@ -45,11 +31,16 @@ Deno.serve(async (request) => {
       return json({ error: 'employee_id and a 4-digit new_pin are required.' }, 400);
     }
 
-    const { data: employeeBefore } = await service
+    const { data: employeeBefore, error: employeeError } = await service
       .from('employees')
-      .select('id, name, username')
+      .select('id, name, username, phone, bike_plate, bike_model, mileage, active, created_at, updated_at')
       .eq('id', employeeId)
       .maybeSingle();
+
+    if (employeeError) {
+      console.error('[reset-rider-pin] employee lookup failed', employeeError);
+      return json({ error: 'Failed to load employee.' }, 500);
+    }
 
     if (!employeeBefore) {
       return json({ error: 'Employee not found.' }, 404);
@@ -64,10 +55,12 @@ Deno.serve(async (request) => {
       return json({ error: 'Failed to hash PIN.' }, 500);
     }
 
-    const { error: updateError } = await service
+    const { data: employeeAfter, error: updateError } = await service
       .from('employees')
       .update({ pin_hash: pinHash })
-      .eq('id', employeeId);
+      .eq('id', employeeId)
+      .select('id, name, username, phone, bike_plate, bike_model, mileage, active, created_at, updated_at')
+      .single();
 
     if (updateError) {
       console.error('[reset-rider-pin] employee update failed', updateError);
@@ -75,13 +68,13 @@ Deno.serve(async (request) => {
     }
 
     await service.from('audit_log').insert({
-      actor_id: callerId,
+      actor_id: caller.user.id,
       action: 'employee.pin_reset',
       entity_type: 'employee',
       entity_id: employeeId,
-      before: employeeBefore,
+      before: safeEmployee(employeeBefore),
       after: {
-        ...employeeBefore,
+        ...safeEmployee(employeeAfter),
         pin_reset: true,
       },
     });

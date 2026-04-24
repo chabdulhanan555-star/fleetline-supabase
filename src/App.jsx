@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import {
-  AlertCircle,
   ArrowLeft,
   BarChart3,
   Bike,
@@ -40,8 +39,8 @@ import {
   getCurrentSession,
   getSignedPhotoUrl,
   inviteAdmin,
+  isDemoMode,
   isSupabaseConfigured,
-  listActiveEmployees,
   listAdmins,
   listAuditLog,
   onSessionChange,
@@ -373,18 +372,18 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}
   </div>
 );
 
-const LoginView = ({ employees, onAdminLogin, onRiderLogin, loading, error, demoMode }) => {
-  const [mode, setMode] = useState('pick');
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
+const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => {
+  const [mode, setMode] = useState('rider');
+  const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleRiderSubmit = async () => {
-    if (!selectedEmployee || !/^\d{4}$/.test(pin)) {
+    if (!username.trim() || !/^\d{4}$/.test(pin)) {
       return;
     }
-    await onRiderLogin(selectedEmployee.username, pin);
+    await onRiderLogin(username, pin);
   };
 
   return (
@@ -423,71 +422,19 @@ const LoginView = ({ employees, onAdminLogin, onRiderLogin, loading, error, demo
             </div>
           ) : null}
 
-          {mode === 'pick' ? (
-            <>
-              <div className="mb-3 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
-                // Select Rider
-              </div>
-              <div className="no-scrollbar mb-6 max-h-64 space-y-2 overflow-y-auto">
-                {employees.length === 0 ? (
-                  <div className="border border-dashed border-zinc-800 p-6 text-center">
-                    <AlertCircle className="mx-auto mb-2 h-8 w-8 text-amber-500" />
-                    <div className="text-sm text-zinc-400">No riders registered yet.</div>
-                    <div className="mt-1 font-mono text-[10px] text-zinc-500">Admin must add riders first</div>
-                  </div>
-                ) : null}
-                {employees.map((employee) => (
-                  <button
-                    key={employee.id}
-                    onClick={() => {
-                      setSelectedEmployee(employee);
-                      setPin('');
-                      setMode('rider');
-                    }}
-                    className="group flex w-full items-center gap-3 border border-zinc-800 bg-zinc-950 p-3 transition-all hover:border-orange-500 hover:bg-orange-500/5"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center border border-orange-500/40 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
-                      <User className="h-5 w-5 text-orange-500" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="font-semibold text-white">{employee.name}</div>
-                      <div className="font-mono text-[10px] text-zinc-500">{employee.bikePlate}</div>
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-zinc-600 transition-colors group-hover:text-orange-500" />
-                  </button>
-                ))}
-              </div>
-              <div className="relative mb-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-zinc-800"></div>
-                </div>
-                <div className="relative flex justify-center">
-                  <span className="bg-black px-3 font-mono text-[10px] uppercase tracking-widest text-zinc-500">or</span>
-                </div>
-              </div>
-              <button
-                onClick={() => setMode('admin')}
-                className="flex w-full items-center justify-center gap-2 border border-amber-500/50 bg-black py-3 text-amber-400 transition-colors hover:bg-amber-500/10"
-              >
-                <Shield className="h-4 w-4" />
-                <span className="font-display tracking-widest">ADMIN ACCESS</span>
-              </button>
-            </>
-          ) : null}
-
-          {mode === 'rider' && selectedEmployee ? (
+          {mode === 'rider' ? (
             <div>
-              <button
-                onClick={() => setMode('pick')}
-                className="mb-4 flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-amber-500/70 transition-colors hover:text-orange-500"
-              >
-                <ArrowLeft className="h-3 w-3" /> Back
-              </button>
               <div className="mb-4 border border-orange-500/30 bg-orange-500/5 p-5">
-                <div className="mb-3 font-display text-2xl text-white">{selectedEmployee.name}</div>
-                <div className="mb-4 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-                  {selectedEmployee.bikePlate} | {selectedEmployee.bikeModel || 'bike'}
-                </div>
+                <User className="mb-3 h-8 w-8 text-orange-500" />
+                <div className="mb-1 font-display text-2xl text-white">Rider Login</div>
+                <div className="mb-4 text-sm text-zinc-400">Enter the username and PIN given by your admin.</div>
+                <Input
+                  label="Username"
+                  icon={Hash}
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value.toLowerCase().replace(/\s/g, ''))}
+                  placeholder="ali.hassan"
+                />
                 <Input
                   label="4-digit PIN"
                   icon={KeyRound}
@@ -501,10 +448,17 @@ const LoginView = ({ employees, onAdminLogin, onRiderLogin, loading, error, demo
               </div>
               <button
                 onClick={handleRiderSubmit}
-                disabled={loading || pin.length !== 4}
+                disabled={loading || !username.trim() || pin.length !== 4}
                 className="w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display text-lg tracking-widest text-black glow-orange disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading ? 'VERIFYING...' : 'ENTER DASHBOARD ->'}
+              </button>
+              <button
+                onClick={() => setMode('admin')}
+                className="mt-4 flex w-full items-center justify-center gap-2 border border-amber-500/50 bg-black py-3 text-amber-400 transition-colors hover:bg-amber-500/10"
+              >
+                <Shield className="h-4 w-4" />
+                <span className="font-display tracking-widest">ADMIN ACCESS</span>
               </button>
             </div>
           ) : null}
@@ -512,10 +466,10 @@ const LoginView = ({ employees, onAdminLogin, onRiderLogin, loading, error, demo
           {mode === 'admin' ? (
             <div>
               <button
-                onClick={() => setMode('pick')}
+                onClick={() => setMode('rider')}
                 className="mb-4 flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-amber-500/70 transition-colors hover:text-orange-500"
               >
-                <ArrowLeft className="h-3 w-3" /> Back
+                <ArrowLeft className="h-3 w-3" /> Rider Login
               </button>
               <div className="mb-4 border border-amber-500/30 bg-amber-500/5 p-5">
                 <Shield className="mb-3 h-8 w-8 text-amber-400" />
@@ -863,12 +817,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
                     <Edit2 className="h-4 w-4 text-orange-500" />
                   </button>
                   <button
-                    onClick={() => {
-                      const nextPin = window.prompt(`Reset PIN for ${employee.name}. Enter a new 4-digit PIN:`, '');
-                      if (nextPin) {
-                        onResetPin(employee, nextPin);
-                      }
-                    }}
+                    onClick={() => onResetPin(employee)}
                     className="flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-amber-500 hover:bg-amber-500/10"
                   >
                     <KeyRound className="h-4 w-4 text-amber-400" />
@@ -903,6 +852,58 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
         />
       </Modal>
     </div>
+  );
+};
+
+const ResetPinModal = ({ employee, busy, onClose, onConfirm }) => {
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+
+  useEffect(() => {
+    setPin('');
+    setConfirmPin('');
+  }, [employee]);
+
+  const valid = /^\d{4}$/.test(pin) && pin === confirmPin;
+
+  return (
+    <Modal open={Boolean(employee)} onClose={onClose} title="RESET RIDER PIN">
+      <div className="space-y-4">
+        <div className="border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="font-display text-xl text-white">{employee?.name}</div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-amber-300">
+            @{employee?.username} | New PIN required
+          </div>
+        </div>
+        <Input
+          label="New 4-digit PIN"
+          icon={KeyRound}
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          value={pin}
+          onChange={(event) => setPin(event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+          placeholder="1234"
+        />
+        <Input
+          label="Confirm PIN"
+          icon={KeyRound}
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          value={confirmPin}
+          onChange={(event) => setConfirmPin(event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+          placeholder="1234"
+        />
+        <button
+          onClick={() => valid && onConfirm(pin)}
+          disabled={!valid || busy}
+          className="w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {busy ? 'RESETTING...' : 'RESET PIN'}
+        </button>
+      </div>
+    </Modal>
   );
 };
 
@@ -1172,10 +1173,7 @@ const EmployeeDetailView = ({ employee, readings, config, onBack, onUpdateEmploy
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                const nextPin = window.prompt(`Reset PIN for ${employee.name}. Enter a new 4-digit PIN:`, '');
-                if (nextPin) onResetPin(employee, nextPin);
-              }}
+              onClick={() => onResetPin(employee)}
               className="flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-amber-500"
             >
               <KeyRound className="h-4 w-4 text-amber-400" />
@@ -1311,7 +1309,17 @@ const EmployeeDetailView = ({ employee, readings, config, onBack, onUpdateEmploy
   );
 };
 
-const RiderSubmitView = ({ employee, readings, config, queuedCount, onSubmit, onShareWhatsApp }) => {
+const RiderSubmitView = ({
+  employee,
+  readings,
+  config,
+  queuedCount,
+  failedCount,
+  syncingCount,
+  onRetrySync,
+  onSubmit,
+  onShareWhatsApp,
+}) => {
   const fileInput = useRef(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
@@ -1338,14 +1346,24 @@ const RiderSubmitView = ({ employee, readings, config, queuedCount, onSubmit, on
       </div>
 
       {queuedCount > 0 ? (
-        <div className="border border-amber-500/30 bg-amber-500/10 p-4">
+        <div className={`border p-4 ${failedCount > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
           <div className="mb-1 flex items-center gap-2">
-            <CloudOff className="h-4 w-4 text-amber-400" />
-            <div className="font-mono text-[10px] uppercase tracking-widest text-amber-300">
-              {queuedCount} queued | will sync on reconnect
+            <CloudOff className={`h-4 w-4 ${failedCount > 0 ? 'text-red-300' : 'text-amber-400'}`} />
+            <div className={`font-mono text-[10px] uppercase tracking-widest ${failedCount > 0 ? 'text-red-200' : 'text-amber-300'}`}>
+              {failedCount > 0
+                ? `${failedCount} failed | ${queuedCount - failedCount} waiting`
+                : `${queuedCount} queued${syncingCount > 0 ? ` | ${syncingCount} syncing` : ' | will sync on reconnect'}`}
             </div>
           </div>
           <div className="text-xs text-zinc-400">Queued readings stay on this device until they upload successfully.</div>
+          {failedCount > 0 ? (
+            <button
+              onClick={onRetrySync}
+              className="mt-3 border border-red-400/50 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-red-200"
+            >
+              Retry sync
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -1530,7 +1548,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
                     </div>
                     <div className="font-mono text-[10px] uppercase text-zinc-500">
                       {fmtDate(reading.date)}
-                      {reading.queued ? ' | awaiting sync' : ''}
+                      {reading.queued ? ` | ${reading.outboxStatus === 'failed' ? 'sync failed' : 'awaiting sync'}` : ''}
                     </div>
                   </div>
                   {diff !== null ? (
@@ -1563,7 +1581,6 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
 export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [session, setSession] = useState(null);
-  const [loginDirectory, setLoginDirectory] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [readings, setReadings] = useState([]);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
@@ -1578,6 +1595,8 @@ export default function App() {
   const [riderTab, setRiderTab] = useState('today');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [photoModal, setPhotoModal] = useState({ open: false, url: '', path: '' });
+  const [resetPinEmployee, setResetPinEmployee] = useState(null);
+  const [resetPinBusy, setResetPinBusy] = useState(false);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -1592,10 +1611,8 @@ export default function App() {
 
     const boot = async () => {
       const currentSession = await getCurrentSession();
-      const directory = await listActiveEmployees().catch(() => []);
       if (!isMounted) return;
       setSession(currentSession);
-      setLoginDirectory(directory);
       setAuthReady(true);
     };
 
@@ -1668,14 +1685,6 @@ export default function App() {
 
   const showToast = (message, tone = 'info') => setToast({ message, tone });
 
-  const refreshLoginDirectory = async () => {
-    try {
-      setLoginDirectory(await listActiveEmployees());
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   const refreshAdmins = async () => {
     setAdmins(await listAdmins());
   };
@@ -1709,11 +1718,15 @@ export default function App() {
     });
   };
 
+  const flushQueuedReadings = async (includeFailed = false) => {
+    if (!navigator.onLine || session?.role !== 'rider') return;
+    await flushOutbox(replayQueuedReading, { includeFailed });
+  };
+
   useEffect(() => {
     const tryFlush = async () => {
-      if (!navigator.onLine || session?.role !== 'rider') return;
       try {
-        await flushOutbox(replayQueuedReading);
+        await flushQueuedReadings(false);
       } catch (error) {
         console.error(error);
       }
@@ -1743,6 +1756,9 @@ export default function App() {
         photoPath: null,
         submittedAt: item.payload.submittedAt,
         queued: true,
+        outboxStatus: item.status ?? 'queued',
+        attempts: item.attempts ?? 0,
+        lastError: item.lastError ?? null,
       }));
   }, [queuedItems, riderEmployee]);
 
@@ -1752,6 +1768,8 @@ export default function App() {
   }, [readingsByEmployee, riderEmployee, riderQueuedReadings]);
 
   const queuedCount = riderQueuedReadings.length;
+  const failedQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'failed').length;
+  const syncingQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'syncing').length;
 
   const handleAdminLogin = async (email, password) => {
     setAuthLoading(true);
@@ -1783,7 +1801,6 @@ export default function App() {
 
   const handleLogout = async () => {
     await signOut();
-    await refreshLoginDirectory();
     setSelectedEmployeeId(null);
     setAdminTab('overview');
     setRiderTab('today');
@@ -1792,8 +1809,7 @@ export default function App() {
   const handleSaveEmployee = async (employee, options) => {
     try {
       await saveEmployee(employee, options);
-      await refreshLoginDirectory();
-      showToast(options.isNew ? 'Rider added.' : 'Rider updated.', 'success');
+      showToast(options?.isNew ? 'Rider added.' : 'Rider updated.', 'success');
     } catch (error) {
       console.error(error);
       showToast(error.message || 'Failed to save rider.', 'error');
@@ -1804,7 +1820,6 @@ export default function App() {
   const handleDeleteEmployee = async (employeeId) => {
     try {
       await deleteEmployee(employeeId);
-      await refreshLoginDirectory();
       if (selectedEmployeeId === employeeId) setSelectedEmployeeId(null);
       showToast('Rider deleted.', 'success');
     } catch (error) {
@@ -1817,16 +1832,21 @@ export default function App() {
   const handleResetPin = async (employee, nextPin) => {
     if (!/^\d{4}$/.test(String(nextPin ?? ''))) {
       showToast('PIN must be exactly 4 digits.', 'error');
-      return;
+      return false;
     }
 
+    setResetPinBusy(true);
     try {
       await resetRiderPin(employee.id, nextPin);
       showToast(`PIN reset for ${employee.name}.`, 'success');
       await refreshAudit();
+      return true;
     } catch (error) {
       console.error(error);
       showToast(error.message || 'Failed to reset PIN.', 'error');
+      return false;
+    } finally {
+      setResetPinBusy(false);
     }
   };
 
@@ -1892,7 +1912,7 @@ export default function App() {
         photoPath,
         submittedAt: payload.submittedAt,
       });
-      await flushOutbox(replayQueuedReading);
+      await flushQueuedReadings(false);
       showToast('Reading submitted.', 'success');
     } catch (error) {
       if (isLikelyNetworkError(error)) {
@@ -1911,17 +1931,20 @@ export default function App() {
     return <LoadingScreen />;
   }
 
+  if (!isSupabaseConfigured && !isDemoMode) {
+    return <SupabaseSetupView />;
+  }
+
   if (!session) {
     return (
       <>
         <Toast toast={toast} />
         <LoginView
-          employees={loginDirectory}
           onAdminLogin={handleAdminLogin}
           onRiderLogin={handleRiderLogin}
           loading={authLoading}
           error={authError}
-          demoMode={!isSupabaseConfigured}
+          demoMode={isDemoMode}
         />
       </>
     );
@@ -1942,7 +1965,7 @@ export default function App() {
             onBack={() => setSelectedEmployeeId(null)}
             onUpdateEmployee={handleSaveEmployee}
             onDeleteEmployee={handleDeleteEmployee}
-            onResetPin={handleResetPin}
+            onResetPin={setResetPinEmployee}
             onPreviewPhoto={handlePreviewPhoto}
           />
         ) : (
@@ -1960,7 +1983,7 @@ export default function App() {
                 employees={employees}
                 onSave={handleSaveEmployee}
                 onDelete={handleDeleteEmployee}
-                onResetPin={handleResetPin}
+                onResetPin={setResetPinEmployee}
               />
             ) : null}
             {adminTab === 'admins' ? <AdminsPanel admins={admins} onRefresh={refreshAdmins} onInvite={handleInviteAdmin} /> : null}
@@ -2008,6 +2031,16 @@ export default function App() {
         <Modal open={photoModal.open} onClose={() => setPhotoModal({ open: false, url: '', path: '' })} title="PHOTO PREVIEW">
           {photoModal.url ? <img src={photoModal.url} alt={photoModal.path} className="w-full border border-zinc-800" /> : null}
         </Modal>
+        <ResetPinModal
+          employee={resetPinEmployee}
+          busy={resetPinBusy}
+          onClose={() => setResetPinEmployee(null)}
+          onConfirm={async (nextPin) => {
+            if (resetPinEmployee && await handleResetPin(resetPinEmployee, nextPin)) {
+              setResetPinEmployee(null);
+            }
+          }}
+        />
       </div>
     );
   }
@@ -2024,6 +2057,9 @@ export default function App() {
           readings={riderReadings}
           config={config}
           queuedCount={queuedCount}
+          failedCount={failedQueuedCount}
+          syncingCount={syncingQueuedCount}
+          onRetrySync={() => flushQueuedReadings(true)}
           onSubmit={handleSubmitReading}
           onShareWhatsApp={(message) => openWhatsApp(config.adminWhatsApp, message)}
         />

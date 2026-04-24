@@ -11,13 +11,13 @@ npm.cmd run dev
 
 Open `http://localhost:5173/`.
 
-If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are missing, the app runs in local demo mode so the UI can be reviewed without a backend.
+If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are missing during local development, the app runs in local demo mode so the UI can be reviewed without a backend. Production builds fail closed with a setup screen instead of silently using demo data.
 
 Demo mode credentials:
 
 ```text
 Admin: any email + any password
-Rider: Ali or Sara, PIN 1234
+Rider: username `ali` or `sara`, PIN `1234`
 ```
 
 ## Environment
@@ -37,10 +37,13 @@ The project includes:
 
 ```text
 supabase/migrations/0001_init.sql
+supabase/migrations/0002_production_hardening.sql
 supabase/functions/rider-login
 supabase/functions/invite-admin
 supabase/functions/cleanup-old-photos
 supabase/functions/reset-rider-pin
+supabase/functions/upsert-employee
+supabase/functions/delete-employee
 ```
 
 Useful commands:
@@ -59,6 +62,17 @@ npm.cmd run supabase -- secrets set JWT_SECRET=YOUR_PROJECT_JWT_SECRET CLEANUP_T
 ```
 
 `JWT_SECRET` comes from Supabase Dashboard -> Project Settings -> API -> JWT Secret.
+
+After setting `CLEANUP_TOKEN`, schedule the retention job with the service role from a trusted environment only:
+
+```sql
+select public.schedule_photo_cleanup(
+  'https://YOUR_PROJECT_REF.supabase.co/functions/v1/cleanup-old-photos',
+  'YOUR_RANDOM_CLEANUP_TOKEN'
+);
+```
+
+Do not commit the cleanup token, service role key, or JWT secret.
 
 ## GitHub
 

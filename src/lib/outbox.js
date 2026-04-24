@@ -24,6 +24,8 @@ export async function enqueue(item) {
   await set(item.id, {
     ...item,
     attempts: item.attempts ?? 0,
+    status: item.status ?? 'queued',
+    lastError: item.lastError ?? null,
     queuedAt: item.queuedAt ?? Date.now(),
   }, store);
   await emit();
@@ -46,18 +48,30 @@ function wait(ms) {
   });
 }
 
-export async function flushOutbox(replay) {
+export async function flushOutbox(replay, options = {}) {
   const items = await listOutbox();
 
   for (const item of items) {
+    if (!options.includeFailed && (item.status === 'failed' || (item.attempts ?? 0) >= 3)) {
+      continue;
+    }
+
     try {
+      await set(item.id, { ...item, status: 'syncing', lastError: null }, store);
+      await emit();
       await replay(item);
       await del(item.id, store);
     } catch (error) {
       const attempts = (item.attempts ?? 0) + 1;
-      await set(item.id, { ...item, attempts }, store);
+      const failed = attempts >= 3;
+      await set(item.id, {
+        ...item,
+        attempts,
+        status: failed ? 'failed' : 'queued',
+        lastError: error?.message || String(error),
+      }, store);
 
-      if (attempts >= 3) {
+      if (failed) {
         console.error('[outbox] giving up after 3 attempts', item.id, error);
       } else {
         await wait(500 * 2 ** (attempts - 1));
