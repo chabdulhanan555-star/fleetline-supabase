@@ -6,7 +6,8 @@ const RIDER_SESSION_KEY = 'fleetline.rider-session.v1';
 const DEMO_STORE_KEY = 'fleetline.demo-store.v1';
 const DEMO_SESSION_KEY = 'fleetline.demo-session.v1';
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-export const isDemoMode = !isSupabaseConfigured && import.meta.env.DEV;
+export const isDemoMode =
+  !isSupabaseConfigured && import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === 'true';
 
 if (!isSupabaseConfigured) {
   console.warn('[fleetline] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');

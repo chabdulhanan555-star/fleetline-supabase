@@ -11,7 +11,13 @@ npm.cmd run dev
 
 Open `http://localhost:5173/`.
 
-If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are missing during local development, the app runs in local demo mode so the UI can be reviewed without a backend. Production builds fail closed with a setup screen instead of silently using demo data.
+If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are missing, the app shows a setup screen. Local demo mode is opt-in only so real login is never bypassed by accident.
+
+To intentionally preview demo mode without Supabase, add this to `.env.local`:
+
+```text
+VITE_DEMO_MODE=true
+```
 
 Demo mode credentials:
 
