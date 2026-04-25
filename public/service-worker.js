@@ -1,4 +1,4 @@
-const CACHE_NAME = 'routeledger-v3';
+const CACHE_NAME = 'fleetline-v2';
 const SHELL_ASSETS = [
   '/',
   '/index.html',

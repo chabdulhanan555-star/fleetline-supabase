@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import {
   ArrowLeft,
-  AlertTriangle,
   BarChart3,
   Bike,
   Camera,
@@ -20,13 +19,11 @@ import {
   Loader2,
   LogOut,
   MessageCircle,
-  Moon,
   PackageCheck,
   Phone,
   RefreshCw,
   Settings,
   Shield,
-  Sun,
   Trash2,
   TrendingUp,
   Upload,
@@ -69,27 +66,7 @@ const DEFAULT_CONFIG = {
   updatedBy: null,
 };
 
-const READING_TYPES = {
-  morning: {
-    label: 'Morning Start',
-    shortLabel: 'Morning',
-    icon: Sun,
-    helper: 'Before leaving for market',
-  },
-  evening: {
-    label: 'Evening End',
-    shortLabel: 'Evening',
-    icon: Moon,
-    helper: 'After market work is done',
-  },
-};
-
-const HIGH_KM_WARNING = 300;
-const toLocalIsoDate = (date = new Date()) => {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-};
-const today = () => toLocalIsoDate();
+const today = () => new Date().toISOString().slice(0, 10);
 const monthKey = (value) => value.slice(0, 7);
 const fmtDate = (value) =>
   new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -144,107 +121,13 @@ const buildReadingsMap = (rows) =>
     return accumulator;
   }, {});
 
-const getReadingType = (reading) => reading.readingType || reading.reading_type || 'evening';
-
-const getDaySummary = (readings, date) => {
-  const dayReadings = sortReadingsAsc(readings).filter((reading) => reading.date === date && !reading.queued);
-  const morning = dayReadings.find((reading) => getReadingType(reading) === 'morning') || null;
-  const evening = [...dayReadings].reverse().find((reading) => getReadingType(reading) === 'evening') || null;
-  const distance = morning && evening ? evening.km - morning.km : null;
-
-  return {
-    date,
-    readings: dayReadings,
-    morning,
-    evening,
-    complete: Boolean(morning && evening),
-    distance,
-    billableDistance: distance === null ? 0 : Math.max(0, distance),
-    isLower: distance !== null && distance < 0,
-    isHigh: distance !== null && distance > HIGH_KM_WARNING,
-    missingMorning: !morning,
-    missingEvening: !evening,
-  };
-};
-
-const buildDailySummaries = (readings, selectedMonth = null) => {
-  const filtered = sortReadingsAsc(readings).filter(
-    (reading) => !reading.queued && (!selectedMonth || monthKey(reading.date) === selectedMonth),
-  );
-  const dates = [...new Set(filtered.map((reading) => reading.date))];
-  return dates.map((date) => getDaySummary(filtered, date));
-};
-
-const calculatePeriodStats = (employee, readings, config, selectedMonth = null) => {
-  const mileage = Number(employee.mileage ?? config.defaultMileage);
-  const summaries = buildDailySummaries(readings, selectedMonth);
-  const totalKm = summaries.reduce((total, day) => total + day.billableDistance, 0);
-  const fuel = mileage > 0 ? totalKm / mileage : 0;
-
-  return {
-    mileage,
-    summaries,
-    completeDays: summaries.filter((day) => day.complete).length,
-    missingMorning: summaries.filter((day) => day.missingMorning).length,
-    missingEvening: summaries.filter((day) => day.missingEvening).length,
-    warnings: summaries.filter((day) => day.isLower || day.isHigh).length,
-    totalKm,
-    fuel,
-    cost: fuel * Number(config.fuelPrice),
-  };
-};
-
-const getNextReadingType = (readings, date = today()) => {
-  const day = getDaySummary(readings, date);
-  if (!day.morning) return 'morning';
-  if (!day.evening) return 'evening';
-  return 'evening';
-};
-
-const buildDailySummaryMessage = (employees, readingsByEmployee, config) => {
-  const todayValue = today();
-  let totalKm = 0;
-  let totalFuel = 0;
-  let complete = 0;
-  const missing = [];
-  const warnings = [];
-
-  employees.forEach((employee) => {
-    const day = getDaySummary(readingsByEmployee[employee.id] || [], todayValue);
-    const mileage = Number(employee.mileage ?? config.defaultMileage);
-    totalKm += day.billableDistance;
-    totalFuel += mileage > 0 ? day.billableDistance / mileage : 0;
-    if (day.complete) complete += 1;
-    if (!day.complete) {
-      missing.push(`${employee.name}: ${day.missingMorning ? 'morning' : ''}${day.missingMorning && day.missingEvening ? ' + ' : ''}${day.missingEvening ? 'evening' : ''}`);
-    }
-    if (day.isLower) warnings.push(`${employee.name}: evening lower than morning`);
-    if (day.isHigh) warnings.push(`${employee.name}: ${fmtNum(day.distance)} km today`);
-  });
-
-  const cost = totalFuel * Number(config.fuelPrice);
-
-  return [
-    '*RouteLedger Daily Summary*',
-    '',
-    `*Date:* ${fmtDate(todayValue)}`,
-    `*Complete riders:* ${complete}/${employees.length}`,
-    `*Total KM:* ${fmtNum(totalKm)} km`,
-    `*Fuel estimate:* ${totalFuel.toFixed(1)} L`,
-    `*Cost estimate:* ${config.currency} ${fmtNum(Math.round(cost))}`,
-    '',
-    missing.length ? `*Missing:* ${missing.join(', ')}` : '*Missing:* none',
-    warnings.length ? `*Warnings:* ${warnings.join(', ')}` : '*Warnings:* none',
-  ].join('\n');
-};
-
 const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => {
   const rows = [
-    [`RouteLedger Fleet Report - ${selectedMonth || 'All time'}`],
+    [`FleetLine Fleet Report - ${selectedMonth || 'All time'}`],
     [`Generated: ${new Date().toLocaleString()}`],
     [`Fuel price: ${config.currency} ${config.fuelPrice}/L`],
     [],
-    ['Rider', 'Username', 'Bike Plate', 'Bike Model', 'Mileage (km/L)', 'Complete Days', 'Missing Morning', 'Missing Evening', 'Warnings', 'Total KM', 'Fuel (L)', `Cost (${config.currency})`],
+    ['Rider', 'Username', 'Bike Plate', 'Bike Model', 'Mileage (km/L)', 'Readings', 'Total KM', 'Fuel (L)', `Cost (${config.currency})`],
   ];
 
   let grandKm = 0;
@@ -252,60 +135,62 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => 
   let grandCost = 0;
 
   employees.forEach((employee) => {
-    const stats = calculatePeriodStats(employee, readingsByEmployee[employee.id] || [], config, selectedMonth);
+    const mileage = Number(employee.mileage ?? config.defaultMileage);
+    const readings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
+      (reading) => !selectedMonth || monthKey(reading.date) === selectedMonth,
+    );
+    const distance = readings.length >= 2 ? Math.max(0, readings.at(-1).km - readings[0].km) : 0;
+    const fuel = mileage > 0 ? distance / mileage : 0;
+    const cost = fuel * Number(config.fuelPrice);
 
-    grandKm += stats.totalKm;
-    grandFuel += stats.fuel;
-    grandCost += stats.cost;
+    grandKm += distance;
+    grandFuel += fuel;
+    grandCost += cost;
 
     rows.push([
       employee.name,
       employee.username,
       employee.bikePlate,
       employee.bikeModel || '',
-      stats.mileage,
-      stats.completeDays,
-      stats.missingMorning,
-      stats.missingEvening,
-      stats.warnings,
-      stats.totalKm,
-      stats.fuel.toFixed(2),
-      stats.cost.toFixed(2),
+      mileage,
+      readings.length,
+      distance,
+      fuel.toFixed(2),
+      cost.toFixed(2),
     ]);
   });
 
   rows.push([]);
-  rows.push(['FLEET TOTAL', '', '', '', '', '', '', '', '', grandKm, grandFuel.toFixed(2), grandCost.toFixed(2)]);
+  rows.push(['FLEET TOTAL', '', '', '', '', '', grandKm, grandFuel.toFixed(2), grandCost.toFixed(2)]);
   return rows;
 };
 
 const buildEmployeeCSV = (employee, readingsByEmployee, config, selectedMonth) => {
+  const mileage = Number(employee.mileage ?? config.defaultMileage);
   const readings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
     (reading) => !selectedMonth || monthKey(reading.date) === selectedMonth,
   );
-  const stats = calculatePeriodStats(employee, readings, config, selectedMonth);
 
   const rows = [
-    [`RouteLedger Report - ${employee.name} (${employee.bikePlate})`],
+    [`FleetLine Report - ${employee.name} (${employee.bikePlate})`],
     [`Month: ${selectedMonth || 'All time'} | Generated: ${new Date().toLocaleString()}`],
-    [`Mileage: ${stats.mileage} km/L | Fuel price: ${config.currency} ${config.fuelPrice}/L`],
+    [`Mileage: ${mileage} km/L | Fuel price: ${config.currency} ${config.fuelPrice}/L`],
     [],
-    ['Date', 'Morning Odo', 'Morning Time', 'Evening Odo', 'Evening Time', 'Daily KM', 'Fuel Used (L)', `Cost (${config.currency})`, 'Status'],
+    ['Date', 'Submitted At', 'Odometer (km)', 'Daily Distance (km)', 'Fuel Used (L)', `Cost (${config.currency})`],
   ];
 
-  stats.summaries.forEach((day) => {
-    const fuel = stats.mileage > 0 ? day.billableDistance / stats.mileage : 0;
+  readings.forEach((reading, index) => {
+    const previous = index > 0 ? readings[index - 1] : null;
+    const distance = previous ? Math.max(0, reading.km - previous.km) : 0;
+    const fuel = mileage > 0 ? distance / mileage : 0;
     const cost = fuel * Number(config.fuelPrice);
     rows.push([
-      day.date,
-      day.morning?.km ?? '',
-      day.morning ? new Date(day.morning.submittedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '',
-      day.evening?.km ?? '',
-      day.evening ? new Date(day.evening.submittedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '',
-      day.complete ? day.distance : '',
+      reading.date,
+      new Date(reading.submittedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      reading.km,
+      distance,
       fuel.toFixed(2),
       cost.toFixed(2),
-      day.isLower ? 'Warning: evening lower than morning' : day.isHigh ? `Warning: over ${HIGH_KM_WARNING} km` : day.complete ? 'Complete' : 'Missing reading',
     ]);
   });
 
@@ -376,7 +261,7 @@ const BrandHeader = ({ onLogout, userName, subtitle }) => (
           <Bike className="h-5 w-5 text-black" strokeWidth={2.5} />
         </div>
         <div>
-          <div className="font-display text-xl leading-none text-orange-500">ROUTELEDGER</div>
+          <div className="font-display text-xl leading-none text-orange-500">FLEETLINE</div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
             {subtitle || 'Control'}
           </div>
@@ -535,10 +420,10 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
               </div>
             </div>
             <div className="font-display text-5xl leading-none text-white">
-              ROUTE<span className="text-orange-500">LEDGER</span>
+              FLEET<span className="text-orange-500">LINE</span>
             </div>
             <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.3em] text-amber-500/70">
-              Fuel | Attendance | Routes
+              Supabase Edition | v1
             </div>
           </div>
 
@@ -636,7 +521,7 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
         </div>
       </div>
       <div className="p-5 text-center font-mono text-[10px] uppercase tracking-widest text-zinc-600">
-        RouteLedger | Fuel | Routes | Attendance
+        FleetLine | Fuel | Manage
       </div>
     </div>
   );
@@ -781,18 +666,19 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
   const thisMonth = monthKey(today());
   const stats = employees.reduce(
     (accumulator, employee) => {
-      const periodStats = calculatePeriodStats(employee, readingsByEmployee[employee.id] || [], config, thisMonth);
-      const todayStatus = getDaySummary(readingsByEmployee[employee.id] || [], today());
-      accumulator.totalKm += periodStats.totalKm;
-      accumulator.totalFuel += periodStats.fuel;
-      accumulator.activeToday += todayStatus.morning || todayStatus.evening ? 1 : 0;
-      accumulator.completeToday += todayStatus.complete ? 1 : 0;
-      accumulator.missingMorning += todayStatus.missingMorning ? 1 : 0;
-      accumulator.missingEvening += todayStatus.missingEvening ? 1 : 0;
-      accumulator.warnings += periodStats.warnings;
+      const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
+        (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
+      );
+      if (monthlyReadings.length >= 2) {
+        const distance = Math.max(0, monthlyReadings.at(-1).km - monthlyReadings[0].km);
+        const mileage = Number(employee.mileage ?? config.defaultMileage);
+        accumulator.totalKm += distance;
+        accumulator.totalFuel += mileage > 0 ? distance / mileage : 0;
+      }
+      accumulator.activeToday += monthlyReadings.some((reading) => reading.date === today()) ? 1 : 0;
       return accumulator;
     },
-    { totalKm: 0, totalFuel: 0, activeToday: 0, completeToday: 0, missingMorning: 0, missingEvening: 0, warnings: 0 },
+    { totalKm: 0, totalFuel: 0, activeToday: 0 },
   );
 
   return (
@@ -806,22 +692,9 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
 
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Active Riders" value={employees.length} unit="registered" icon={Users} accent="orange" />
-        <StatCard label="Today Started" value={stats.activeToday} unit={`/ ${employees.length}`} icon={CheckCircle} accent="gold" />
-        <StatCard label="Today Complete" value={stats.completeToday} unit={`/ ${employees.length}`} icon={PackageCheck} accent="orange" />
-        <StatCard label="Warnings" value={stats.warnings} unit="month" icon={AlertTriangle} accent="gold" />
+        <StatCard label="Today" value={stats.activeToday} unit={`/ ${employees.length}`} icon={CheckCircle} accent="gold" />
         <StatCard label="Total KM" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
         <StatCard label="Fuel Used" value={stats.totalFuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <div className="border border-zinc-800 bg-zinc-950 p-4">
-          <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Missing Morning</div>
-          <div className="font-display text-3xl text-red-300">{stats.missingMorning}</div>
-        </div>
-        <div className="border border-zinc-800 bg-zinc-950 p-4">
-          <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Missing Evening</div>
-          <div className="font-display text-3xl text-red-300">{stats.missingEvening}</div>
-        </div>
       </div>
 
       <div className="border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent p-5">
@@ -835,20 +708,12 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       </div>
 
       {employees.length > 0 ? (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <button
-            onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `routeledger_${thisMonth}.csv`)}
-            className="flex w-full items-center justify-center gap-2 border border-amber-400/50 bg-zinc-950 py-3 font-display tracking-widest text-amber-400 hover:bg-amber-400/10"
-          >
-            <FileDown className="h-4 w-4" /> EXPORT FLEET REPORT
-          </button>
-          <button
-            onClick={() => openWhatsApp(config.adminWhatsApp, buildDailySummaryMessage(employees, readingsByEmployee, config))}
-            className="flex w-full items-center justify-center gap-2 bg-[#25D366] py-3 font-display tracking-widest text-white transition-all hover:brightness-110"
-          >
-            <MessageCircle className="h-4 w-4" /> DAILY WHATSAPP SUMMARY
-          </button>
-        </div>
+        <button
+          onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
+          className="flex w-full items-center justify-center gap-2 border border-amber-400/50 bg-zinc-950 py-3 font-display tracking-widest text-amber-400 hover:bg-amber-400/10"
+        >
+          <FileDown className="h-4 w-4" /> EXPORT FLEET REPORT
+        </button>
       ) : null}
 
       <div>
@@ -858,16 +723,11 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         ) : (
           <div className="space-y-2">
             {employees.map((employee) => {
-              const employeeReadings = readingsByEmployee[employee.id] || [];
-              const periodStats = calculatePeriodStats(employee, employeeReadings, config, thisMonth);
-              const todayStatus = getDaySummary(employeeReadings, today());
-              const statusLabel = todayStatus.complete
-                ? 'Complete today'
-                : todayStatus.morning
-                  ? 'Evening missing'
-                  : todayStatus.evening
-                    ? 'Morning missing'
-                    : 'No reading today';
+              const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
+                (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
+              );
+              const distance = monthlyReadings.length >= 2 ? Math.max(0, monthlyReadings.at(-1).km - monthlyReadings[0].km) : 0;
+              const didToday = monthlyReadings.some((reading) => reading.date === today());
 
               return (
                 <button
@@ -877,19 +737,16 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                 >
                   <div className="relative flex h-11 w-11 items-center justify-center border border-orange-500/40 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
                     <User className="h-5 w-5 text-orange-500" />
-                    {todayStatus.complete ? <div className="pulse-dot absolute -right-1 -top-1 h-3 w-3 rounded-full bg-green-500"></div> : null}
+                    {didToday ? <div className="pulse-dot absolute -right-1 -top-1 h-3 w-3 rounded-full bg-green-500"></div> : null}
                   </div>
                   <div className="flex-1 text-left">
                     <div className="font-semibold text-white">{employee.name}</div>
                     <div className="font-mono text-[10px] text-zinc-500">
                       {employee.bikePlate} | {employee.bikeModel || 'bike'}
                     </div>
-                    <div className={`mt-1 font-mono text-[9px] uppercase tracking-widest ${todayStatus.complete ? 'text-green-400' : 'text-amber-300'}`}>
-                      {statusLabel}
-                    </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-display text-xl leading-none text-amber-400">{fmtNum(periodStats.totalKm)}</div>
+                    <div className="font-display text-xl leading-none text-amber-400">{fmtNum(distance)}</div>
                     <div className="font-mono text-[10px] uppercase text-zinc-500">km this mo</div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-zinc-600" />
@@ -1306,7 +1163,10 @@ const EmployeeDetailView = ({ employee, readings, config, onBack, onUpdateEmploy
 
   const months = [...new Set(sortReadingsAsc(readings).map((reading) => monthKey(reading.date)))];
   const filtered = sortReadingsAsc(readings).filter((reading) => monthKey(reading.date) === selectedMonth);
-  const stats = calculatePeriodStats(employee, readings, config, selectedMonth);
+  const mileage = Number(employee.mileage ?? config.defaultMileage);
+  const distance = filtered.length >= 2 ? Math.max(0, filtered.at(-1).km - filtered[0].km) : 0;
+  const fuelUsed = mileage > 0 ? distance / mileage : 0;
+  const cost = fuelUsed * Number(config.fuelPrice);
 
   return (
     <div>
@@ -1365,16 +1225,10 @@ const EmployeeDetailView = ({ employee, readings, config, onBack, onUpdateEmploy
         ) : null}
 
         <div className="grid grid-cols-2 gap-2">
-          <StatCard label="Distance" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
-          <StatCard label="Fuel" value={stats.fuel.toFixed(2)} unit="L" icon={Fuel} accent="gold" />
-          <StatCard label="Cost" value={fmtNum(Math.round(stats.cost))} unit={config.currency} icon={DollarSign} accent="orange" />
-          <StatCard label="Complete Days" value={stats.completeDays} unit="days" icon={CheckCircle} accent="gold" />
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
-          <StatCard label="Missing AM" value={stats.missingMorning} unit="days" icon={Sun} accent="orange" />
-          <StatCard label="Missing PM" value={stats.missingEvening} unit="days" icon={Moon} accent="gold" />
-          <StatCard label="Warnings" value={stats.warnings} unit="flags" icon={AlertTriangle} accent="orange" />
+          <StatCard label="Distance" value={fmtNum(Math.round(distance))} unit="km" icon={TrendingUp} accent="orange" />
+          <StatCard label="Fuel" value={fuelUsed.toFixed(2)} unit="L" icon={Fuel} accent="gold" />
+          <StatCard label="Cost" value={fmtNum(Math.round(cost))} unit={config.currency} icon={DollarSign} accent="orange" />
+          <StatCard label="Readings" value={filtered.length} unit="entries" icon={CheckCircle} accent="gold" />
         </div>
 
         {readings.length > 0 ? (
@@ -1412,9 +1266,7 @@ const EmployeeDetailView = ({ employee, readings, config, onBack, onUpdateEmploy
                       </div>
                     </div>
                     <div className="flex-1">
-                      <div className="font-mono text-xs uppercase text-zinc-500">
-                        {READING_TYPES[getReadingType(reading)]?.label ?? 'Odometer'}
-                      </div>
+                      <div className="font-mono text-xs uppercase text-zinc-500">Odometer</div>
                       <div className="font-display text-2xl leading-none text-white">
                         {fmtNum(reading.km)} <span className="text-xs text-zinc-500">km</span>
                       </div>
@@ -1489,18 +1341,10 @@ const RiderSubmitView = ({
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [reading, setReading] = useState('');
-  const [readingType, setReadingType] = useState(getNextReadingType(readings));
   const [submitting, setSubmitting] = useState(false);
 
   const allReadings = sortReadingsAsc(readings);
   const lastReading = allReadings.length > 0 ? allReadings.at(-1) : null;
-  const todaySummary = getDaySummary(readings, today());
-  const selectedTypeInfo = READING_TYPES[readingType];
-  const selectedTypeReading = todaySummary[readingType];
-  const projectedDistance =
-    readingType === 'evening' && todaySummary.morning && reading
-      ? Number.parseInt(reading, 10) - todaySummary.morning.km
-      : null;
 
   const resetForm = () => {
     if (photoPreview) URL.revokeObjectURL(photoPreview);
@@ -1509,55 +1353,14 @@ const RiderSubmitView = ({
     setReading('');
   };
 
-  useEffect(() => {
-    setReadingType(getNextReadingType(readings));
-  }, [readings]);
-
   return (
     <div className="space-y-4 p-5">
       <div>
-        <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Morning / Evening Submission</div>
+        <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Daily Submission</div>
         <div className="font-display text-3xl leading-none text-white">
           {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
         </div>
       </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        {Object.entries(READING_TYPES).map(([type, info]) => {
-          const Icon = info.icon;
-          const submitted = Boolean(todaySummary[type]);
-          return (
-            <button
-              key={type}
-              onClick={() => setReadingType(type)}
-              className={`border p-4 text-left transition-colors ${
-                readingType === type
-                  ? 'border-orange-500 bg-orange-500/10'
-                  : submitted
-                    ? 'border-green-500/30 bg-green-500/10'
-                    : 'border-zinc-800 bg-zinc-950'
-              }`}
-            >
-              <Icon className={`mb-2 h-5 w-5 ${submitted ? 'text-green-400' : 'text-amber-400'}`} />
-              <div className="font-display text-xl text-white">{info.shortLabel}</div>
-              <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                {submitted ? `${fmtNum(todaySummary[type].km)} km submitted` : info.helper}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {selectedTypeReading ? (
-        <div className="border border-green-500/30 bg-green-500/10 p-4">
-          <div className="font-mono text-[10px] uppercase tracking-widest text-green-300">
-            {selectedTypeInfo.label} already submitted today
-          </div>
-          <div className="mt-1 text-xs text-zinc-400">
-            Current reading: {fmtNum(selectedTypeReading.km)} km. You can submit again only if admin needs a correction later.
-          </div>
-        </div>
-      ) : null}
 
       {queuedCount > 0 ? (
         <div className={`border p-4 ${failedCount > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
@@ -1643,11 +1446,6 @@ const RiderSubmitView = ({
               Last: {fmtNum(lastReading.km)} km ({fmtShort(lastReading.date)})
             </div>
           ) : null}
-          {projectedDistance !== null && !Number.isNaN(projectedDistance) ? (
-            <div className={`mt-2 font-mono text-[10px] uppercase ${projectedDistance < 0 || projectedDistance > HIGH_KM_WARNING ? 'text-red-300' : 'text-amber-300'}`}>
-              Today distance preview: {fmtNum(projectedDistance)} km
-            </div>
-          ) : null}
         </div>
       </div>
 
@@ -1659,11 +1457,6 @@ const RiderSubmitView = ({
             return;
           }
 
-          if (selectedTypeReading) {
-            window.alert(`${selectedTypeInfo.label} is already submitted for today. Ask admin if this needs correction.`);
-            return;
-          }
-
           if (lastReading && km < lastReading.km) {
             const shouldContinue = window.confirm(
               `This reading (${fmtNum(km)}) is lower than your last reading (${fmtNum(lastReading.km)} on ${fmtDate(lastReading.date)}). Submit anyway?`,
@@ -1671,21 +1464,9 @@ const RiderSubmitView = ({
             if (!shouldContinue) return;
           }
 
-          if (readingType === 'evening' && todaySummary.morning) {
-            const distance = km - todaySummary.morning.km;
-            if (distance < 0) {
-              const shouldContinue = window.confirm('Evening reading is lower than morning reading. Submit anyway?');
-              if (!shouldContinue) return;
-            }
-            if (distance > HIGH_KM_WARNING) {
-              const shouldContinue = window.confirm(`Today distance is ${fmtNum(distance)} km, which is unusually high. Submit anyway?`);
-              if (!shouldContinue) return;
-            }
-          }
-
           setSubmitting(true);
           try {
-            await onSubmit({ employee, km, date: today(), readingType, photoFile });
+            await onSubmit({ employee, km, date: today(), photoFile });
             resetForm();
           } catch {
             // Toast state is handled upstream.
@@ -1693,16 +1474,16 @@ const RiderSubmitView = ({
             setSubmitting(false);
           }
         }}
-        disabled={!photoFile || !reading || submitting || Boolean(selectedTypeReading)}
+        disabled={!photoFile || !reading || submitting}
         className="glow-orange w-full bg-gradient-to-r from-orange-500 to-amber-500 py-4 font-display text-xl tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {submitting ? 'SUBMITTING...' : `SUBMIT ${selectedTypeInfo.shortLabel.toUpperCase()} ->`}
+        {submitting ? 'SUBMITTING...' : 'SUBMIT READING ->'}
       </button>
 
       {reading && config.adminWhatsApp ? (
         <button
           onClick={() => {
-            const message = `*RouteLedger Reading*\n\n*Type:* ${selectedTypeInfo.label}\n*Rider:* ${employee.name}\n*Bike:* ${employee.bikePlate}${employee.bikeModel ? ` (${employee.bikeModel})` : ''}\n*Date:* ${fmtDate(today())}\n*Odometer:* ${fmtNum(Number.parseInt(reading, 10))} km\n\n_Sent from RouteLedger_`;
+            const message = `*FleetLine Reading*\n\n*Rider:* ${employee.name}\n*Bike:* ${employee.bikePlate}${employee.bikeModel ? ` (${employee.bikeModel})` : ''}\n*Date:* ${fmtDate(today())}\n*Odometer:* ${fmtNum(Number.parseInt(reading, 10))} km\n\n_Sent from FleetLine_`;
             onShareWhatsApp(message);
           }}
           className="flex w-full items-center justify-center gap-2 bg-[#25D366] py-3 font-display tracking-widest text-white transition-all hover:brightness-110"
@@ -1717,7 +1498,11 @@ const RiderSubmitView = ({
 
 const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
   const thisMonth = monthKey(today());
-  const stats = calculatePeriodStats(employee, readings, config, thisMonth);
+  const monthReadings = sortReadingsAsc(readings).filter((reading) => monthKey(reading.date) === thisMonth);
+  const mileage = Number(employee.mileage ?? config.defaultMileage);
+  const distance = monthReadings.length >= 2 ? Math.max(0, monthReadings.at(-1).km - monthReadings[0].km) : 0;
+  const fuelUsed = mileage > 0 ? distance / mileage : 0;
+  const cost = fuelUsed * Number(config.fuelPrice);
 
   return (
     <div className="space-y-4 p-5">
@@ -1729,19 +1514,17 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <StatCard label="Distance" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
-        <StatCard label="Fuel Est." value={stats.fuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
-        <StatCard label="Complete Days" value={stats.completeDays} unit="days" icon={CheckCircle} accent="orange" />
-        <StatCard label="Warnings" value={stats.warnings} unit="flags" icon={AlertTriangle} accent="gold" />
+        <StatCard label="Distance" value={fmtNum(Math.round(distance))} unit="km" icon={TrendingUp} accent="orange" />
+        <StatCard label="Fuel Est." value={fuelUsed.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
       </div>
 
       <div className="border border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-amber-500/5 p-5">
         <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500">Estimated Monthly Fuel Cost</div>
         <div className="mt-1 font-display text-4xl text-orange-500">
-          {config.currency} {fmtNum(Math.round(stats.cost))}
+          {config.currency} {fmtNum(Math.round(cost))}
         </div>
         <div className="mt-1 font-mono text-[10px] text-zinc-500">
-          @ {config.currency} {config.fuelPrice}/L | {stats.mileage} km/L
+          @ {config.currency} {config.fuelPrice}/L | {mileage} km/L
         </div>
       </div>
 
@@ -1775,7 +1558,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
                   </div>
                   <div className="flex-1">
                     <div className="font-mono text-xs uppercase text-zinc-500">
-                      {reading.queued ? 'Queued Odo' : READING_TYPES[getReadingType(reading)]?.label ?? 'Odo'}
+                      {reading.queued ? 'Queued Odo' : 'Odo'}
                     </div>
                     <div className="font-display text-2xl leading-none text-white">
                       {fmtNum(reading.km)} <span className="text-xs text-zinc-500">km</span>
@@ -1947,7 +1730,6 @@ export default function App() {
       employeeId: payload.employeeId,
       date: payload.date,
       km: payload.km,
-      readingType: payload.readingType,
       photoPath,
       submittedAt: payload.submittedAt,
     });
@@ -1988,7 +1770,6 @@ export default function App() {
         employeeId: item.payload.employeeId,
         date: item.payload.date,
         km: item.payload.km,
-        readingType: item.payload.readingType ?? 'evening',
         photoPath: null,
         submittedAt: item.payload.submittedAt,
         queued: true,
@@ -2120,7 +1901,7 @@ export default function App() {
     }
   };
 
-  const handleSubmitReading = async ({ employee, km, date, readingType, photoFile }) => {
+  const handleSubmitReading = async ({ employee, km, date, photoFile }) => {
     const readingId = crypto.randomUUID();
     const compressedPhoto = await compressPhoto(photoFile);
     const payload = {
@@ -2128,7 +1909,6 @@ export default function App() {
       employeeId: employee.id,
       date,
       km,
-      readingType,
       photoBlob: compressedPhoto,
       submittedAt: new Date().toISOString(),
     };
@@ -2146,7 +1926,6 @@ export default function App() {
         employeeId: employee.id,
         date,
         km,
-        readingType,
         photoPath,
         submittedAt: payload.submittedAt,
       });

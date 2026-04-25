@@ -9,14 +9,14 @@
   <meta name="theme-color" content="#ff6b1a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="RouteLedger" />
+  <meta name="apple-mobile-web-app-title" content="FleetLine" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta
     name="description"
-    content="RouteLedger tracks rider odometer submissions, fuel costs, attendance, and market-route operations."
+    content="FleetLine tracks rider odometer submissions, fuel costs, and fleet operations on Supabase."
   />
 
-  <title>RouteLedger - Rider Operations</title>
+  <title>FleetLine - Fleet Management</title>
 
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
@@ -81,7 +81,7 @@
         }
 
         navigator.serviceWorker.register('/service-worker.js').catch((err) => {
-          console.warn('[RouteLedger] SW registration failed:', err);
+          console.warn('[FleetLine] SW registration failed:', err);
         });
       });
     }

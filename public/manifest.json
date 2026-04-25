@@ -1,7 +1,7 @@
 {
-  "name": "RouteLedger - Rider Operations",
-  "short_name": "RouteLedger",
-  "description": "Daily morning/evening odometer tracking, attendance, and fuel analytics for rider teams.",
+  "name": "FleetLine - Fuel & Fleet Manager",
+  "short_name": "FleetLine",
+  "description": "Daily odometer tracking and fuel analytics for small motorcycle fleets.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
