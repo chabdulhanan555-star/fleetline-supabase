@@ -1,6 +1,6 @@
-# FleetLine Supabase
+# RouteLedger Supabase
 
-FleetLine is a React PWA for small motorcycle-fleet odometer submissions and fuel-cost reporting. This version targets Supabase instead of Firebase and keeps v1 focused on riders, readings, photos, admin tools, CSV export, WhatsApp share, and offline queueing.
+RouteLedger is a React PWA for rider odometer submissions, attendance, market-route operations, and fuel-cost reporting. This version targets Supabase and keeps v1 focused on riders, morning/evening readings, photos, admin tools, CSV export, WhatsApp share, and offline queueing.
 
 ## Local Development
 
