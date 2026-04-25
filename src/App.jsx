@@ -328,6 +328,23 @@ const Modal = ({ open, onClose, title, children }) => {
   );
 };
 
+const PhotoPreviewModal = ({ photoModal, onClose }) => (
+  <Modal open={photoModal.open} onClose={onClose} title="PHOTO PREVIEW">
+    <div className="space-y-4">
+      <button
+        onClick={onClose}
+        className="flex w-full items-center justify-center gap-2 border border-amber-500/50 bg-amber-500/10 py-3 font-display tracking-widest text-amber-300 transition-colors hover:bg-amber-500/20"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        BACK TO APP
+      </button>
+      {photoModal.url ? (
+        <img src={photoModal.url} alt={photoModal.path} className="max-h-[70vh] w-full border border-zinc-800 object-contain" />
+      ) : null}
+    </div>
+  </Modal>
+);
+
 const Input = ({ label, icon: Icon, helper, ...props }) => (
   <div className="mb-4">
     <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">{label}</div>
@@ -2028,9 +2045,10 @@ export default function App() {
           </div>
         </div>
 
-        <Modal open={photoModal.open} onClose={() => setPhotoModal({ open: false, url: '', path: '' })} title="PHOTO PREVIEW">
-          {photoModal.url ? <img src={photoModal.url} alt={photoModal.path} className="w-full border border-zinc-800" /> : null}
-        </Modal>
+        <PhotoPreviewModal
+          photoModal={photoModal}
+          onClose={() => setPhotoModal({ open: false, url: '', path: '' })}
+        />
         <ResetPinModal
           employee={resetPinEmployee}
           busy={resetPinBusy}
@@ -2094,9 +2112,10 @@ export default function App() {
         </div>
       </div>
 
-      <Modal open={photoModal.open} onClose={() => setPhotoModal({ open: false, url: '', path: '' })} title="PHOTO PREVIEW">
-        {photoModal.url ? <img src={photoModal.url} alt={photoModal.path} className="w-full border border-zinc-800" /> : null}
-      </Modal>
+      <PhotoPreviewModal
+        photoModal={photoModal}
+        onClose={() => setPhotoModal({ open: false, url: '', path: '' })}
+      />
     </div>
   );
 }
