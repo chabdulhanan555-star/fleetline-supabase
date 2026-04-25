@@ -719,6 +719,28 @@ export async function deleteEmployee(employeeId) {
   await invokeFunction('delete-employee', { employee_id: employeeId });
 }
 
+export async function deleteReading(readingId) {
+  if (isDemoMode) {
+    const store = readDemoStore();
+    const reading = store.readings.find((row) => row.id === readingId);
+    store.readings = store.readings.filter((row) => row.id !== readingId);
+
+    if (reading?.photoPath) {
+      delete store.photos[reading.photoPath];
+    }
+
+    appendDemoAudit(store, 'reading.delete', 'reading', readingId, reading ?? null, {
+      deleted: true,
+      removedPhoto: Boolean(reading?.photoPath),
+    });
+    writeDemoStore(store);
+    notifyDemoTable('readings');
+    return;
+  }
+
+  await invokeFunction('delete-reading', { reading_id: readingId });
+}
+
 export async function uploadPhoto(employeeId, readingId, file) {
   if (isDemoMode) {
     const path = `demo/readings/${employeeId}/${readingId}.jpg`;

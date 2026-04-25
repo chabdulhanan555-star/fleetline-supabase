@@ -38,6 +38,7 @@ import { enqueue, flushOutbox, onOutboxChange } from './lib/outbox.js';
 import {
   adminLogin,
   deleteEmployee,
+  deleteReading,
   getCurrentSession,
   getSignedPhotoUrl,
   inviteAdmin,
@@ -1239,8 +1240,19 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
   </div>
 );
 
-const EmployeeDetailView = ({ employee, readings, config, onBack, onUpdateEmployee, onDeleteEmployee, onResetPin, onPreviewPhoto }) => {
+const EmployeeDetailView = ({
+  employee,
+  readings,
+  config,
+  onBack,
+  onUpdateEmployee,
+  onDeleteEmployee,
+  onDeleteReading,
+  onResetPin,
+  onPreviewPhoto,
+}) => {
   const [showEdit, setShowEdit] = useState(false);
+  const [deletingReadingId, setDeletingReadingId] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(monthKey(today()));
 
   const months = [...new Set(sortReadingsAsc(readings).map((reading) => monthKey(reading.date)))];
@@ -1374,6 +1386,26 @@ const EmployeeDetailView = ({ employee, readings, config, onBack, onUpdateEmploy
                         PHOTO
                       </button>
                     ) : null}
+                    <button
+                      onClick={async () => {
+                        const label = `${readingTypeLabel(reading)} reading on ${fmtDate(reading.date)}`;
+                        const shouldDelete = window.confirm(
+                          `Delete this ${label}? The photo will also be removed and monthly totals will update.`,
+                        );
+                        if (!shouldDelete) return;
+
+                        setDeletingReadingId(reading.id);
+                        try {
+                          await onDeleteReading(reading);
+                        } finally {
+                          setDeletingReadingId(null);
+                        }
+                      }}
+                      disabled={deletingReadingId === reading.id}
+                      className="font-mono text-[10px] uppercase tracking-widest text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {deletingReadingId === reading.id ? 'DELETING' : 'DELETE'}
+                    </button>
                   </div>
                 );
               })}
@@ -2093,6 +2125,18 @@ export default function App() {
     }
   };
 
+  const handleDeleteReading = async (reading) => {
+    try {
+      await deleteReading(reading.id);
+      await refreshAudit();
+      showToast('Reading and photo deleted.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Failed to delete reading.', 'error');
+      throw error;
+    }
+  };
+
   const handleResetPin = async (employee, nextPin) => {
     if (!/^\d{4}$/.test(String(nextPin ?? ''))) {
       showToast('PIN must be exactly 4 digits.', 'error');
@@ -2231,6 +2275,7 @@ export default function App() {
             onBack={() => setSelectedEmployeeId(null)}
             onUpdateEmployee={handleSaveEmployee}
             onDeleteEmployee={handleDeleteEmployee}
+            onDeleteReading={handleDeleteReading}
             onResetPin={setResetPinEmployee}
             onPreviewPhoto={handlePreviewPhoto}
           />
