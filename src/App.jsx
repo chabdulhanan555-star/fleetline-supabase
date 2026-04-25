@@ -31,7 +31,6 @@ import {
   Sun,
   Trash2,
   TrendingUp,
-  Trophy,
   Upload,
   User,
   UserPlus,
@@ -748,6 +747,22 @@ const ThemeStyles = () => (
     .table-3d {
       border-radius: 18px;
       box-shadow: 0 24px 48px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,253,247,0.08);
+    }
+    .ledger-panel-3d {
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at top right, rgba(217,119,6,0.26), transparent 32rem),
+        linear-gradient(155deg, rgba(23,32,42,0.98), rgba(8,12,17,0.98));
+      box-shadow:
+        0 32px 82px rgba(0,0,0,0.48),
+        0 10px 0 rgba(0,0,0,0.2),
+        inset 0 1px 0 rgba(255,253,247,0.12);
+    }
+    .ledger-row-3d {
+      background:
+        linear-gradient(90deg, rgba(217,119,6,0.06), transparent 42%),
+        rgba(5,8,12,0.72);
+      box-shadow: inset 0 1px 0 rgba(255,253,247,0.04);
     }
     @media (hover: hover) and (pointer: fine) {
       .lift-3d:hover,
@@ -1718,60 +1733,73 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         </div>
       </div>
 
-      <div className="surface-3d border border-amber-400/30 bg-zinc-950 p-5">
-        <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="ledger-panel-3d overflow-hidden border border-orange-500/30 p-5">
+        <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">// Monthly Closing</div>
-            <div className="font-display text-3xl leading-none text-white">Review & Export</div>
-            <div className="mt-1 text-xs text-zinc-500">
-              Use this when month-end fuel payments are ready. Locking/final approval can be added later.
+            <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">// Monthly Operations Ledger</div>
+            <div className="font-display text-4xl leading-none text-white">Fuel & KM Report</div>
+            <div className="mt-1 text-xs text-zinc-400">
+              Full month view for rider payments, fuel overhead, incomplete days, and cost control.
             </div>
           </div>
-          <FileDown className="h-5 w-5 text-amber-400" />
-        </div>
-        <div className="mb-4 grid grid-cols-3 gap-2 font-mono text-[10px] uppercase">
-          <div className="mini-surface-3d border border-zinc-800 bg-black p-3 text-zinc-500">
-            Riders
-            <div className="mt-1 font-display text-2xl text-white">{employees.length}</div>
+          <div className="mini-surface-3d flex h-12 w-12 items-center justify-center border border-orange-500/30 bg-black/60">
+            <FileDown className="h-5 w-5 text-orange-500" />
           </div>
-          <div className="mini-surface-3d border border-zinc-800 bg-black p-3 text-zinc-500">
-            Complete Days
-            <div className="mt-1 font-display text-2xl text-green-300">
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="mini-surface-3d border border-orange-500/25 bg-black/60 p-3">
+            <div className="font-mono text-[9px] uppercase text-zinc-500">Fleet KM</div>
+            <div className="font-display text-3xl leading-none text-amber-400">{fmtNum(Math.round(stats.totalKm))}</div>
+            <div className="font-mono text-[9px] uppercase text-zinc-600">this month</div>
+          </div>
+          <div className="mini-surface-3d border border-orange-500/25 bg-black/60 p-3">
+            <div className="font-mono text-[9px] uppercase text-zinc-500">Fuel Cost</div>
+            <div className="font-display text-3xl leading-none text-orange-500">
+              {fmtNum(Math.round(stats.totalFuel * Number(config.fuelPrice)))}
+            </div>
+            <div className="font-mono text-[9px] uppercase text-zinc-600">{config.currency}</div>
+          </div>
+          <div className="mini-surface-3d border border-green-500/20 bg-black/60 p-3">
+            <div className="font-mono text-[9px] uppercase text-zinc-500">Complete Days</div>
+            <div className="font-display text-3xl leading-none text-green-300">
               {monthlyReportRows.reduce((sum, row) => sum + row.summary.completedDays, 0)}
             </div>
+            <div className="font-mono text-[9px] uppercase text-zinc-600">verified pairs</div>
           </div>
-          <div className="mini-surface-3d border border-zinc-800 bg-black p-3 text-zinc-500">
-            Incomplete
-            <div className="mt-1 font-display text-2xl text-amber-300">
+          <div className="mini-surface-3d border border-amber-400/25 bg-black/60 p-3">
+            <div className="font-mono text-[9px] uppercase text-zinc-500">Incomplete</div>
+            <div className="font-display text-3xl leading-none text-amber-300">
               {monthlyReportRows.reduce((sum, row) => sum + row.incompleteDays, 0)}
             </div>
+            <div className="font-mono text-[9px] uppercase text-zinc-600">needs review</div>
           </div>
         </div>
-        {employees.length > 0 ? (
-          <button
-            onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
-            className="button-3d button-3d-outline flex w-full items-center justify-center gap-2 py-3 font-display tracking-widest"
-          >
-            <FileDown className="h-4 w-4" /> EXPORT MONTHLY CSV
-          </button>
-        ) : null}
-      </div>
 
-      <div>
-        <div className="mb-2 flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
-          <span>// Monthly Report &mdash; Full Ledger</span>
-          <span className="text-zinc-600">A&ndash;Z &middot; tap a row for details</span>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-y border-orange-500/15 bg-black/35 px-3 py-3">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
+            A-Z rider ledger | tap row for daily details
+          </div>
+          {employees.length > 0 ? (
+            <button
+              onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
+              className="button-3d button-3d-outline flex items-center justify-center gap-2 px-4 py-2.5 font-display tracking-widest"
+            >
+              <FileDown className="h-4 w-4" /> EXPORT MONTHLY CSV
+            </button>
+          ) : null}
         </div>
+
         {monthlyReportRows.length === 0 ? (
           <div className="empty-state p-10 text-center">
             <FileDown className="empty-icon mx-auto mb-3 h-10 w-10 text-orange-500/80" />
             <div className="text-sm text-zinc-400">Add riders and submit readings to populate the ledger.</div>
           </div>
         ) : (
-          <div className="table-3d overflow-hidden border border-zinc-800 bg-zinc-950">
+          <div className="table-3d overflow-hidden border border-orange-500/20 bg-black/65">
             <div className="overflow-x-auto">
               <div className="min-w-[640px]">
-                <div className="grid grid-cols-[1.4fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] border-b border-zinc-800 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">
+                <div className="grid grid-cols-[1.4fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] border-b border-orange-500/15 bg-orange-500/10 px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
                   <div>Rider</div>
                   <div className="text-right">Days</div>
                   <div className="text-right">KM</div>
@@ -1790,7 +1818,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                       <button
                         key={employee.id}
                         onClick={() => onSelectEmployee(employee.id)}
-                        className="grid w-full grid-cols-[1.4fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] items-center gap-2 border-b border-zinc-900 px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-orange-500/5"
+                        className="ledger-row-3d grid w-full grid-cols-[1.4fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] items-center gap-2 border-b border-white/5 px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-orange-500/10"
                       >
                         <div className="min-w-0">
                           <div className="truncate font-semibold text-white">{employee.name}</div>
@@ -1819,58 +1847,6 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                   })}
               </div>
             </div>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
-          <Trophy className="h-3.5 w-3.5 text-yellow-400" /> // Top Riders Podium
-        </div>
-        {leaderboardRows.length === 0 || (leaderboardRows[0]?.monthlyKm ?? 0) === 0 ? (
-          <div className="empty-state p-8 text-center">
-            <Trophy className="empty-icon mx-auto mb-3 h-10 w-10 text-yellow-400/80" />
-            <div className="text-sm text-zinc-400">Once riders start logging KMs this month, the top three will show up here.</div>
-          </div>
-        ) : (
-          <div className="grid gap-2 md:grid-cols-3">
-            {leaderboardRows.slice(0, 3).map(({ employee, monthlyKm, fuelCost, todayStatus }, index) => {
-              const podium = [
-                { label: '1st Place', toneBorder: 'border-yellow-400/60', toneBg: 'bg-gradient-to-br from-yellow-500/20 via-amber-500/10 to-transparent', toneAccent: 'text-yellow-300', toneNumber: 'text-yellow-400', glow: 'shadow-[0_0_30px_-8px_rgba(250,204,21,0.55)]' },
-                { label: '2nd Place', toneBorder: 'border-zinc-300/40', toneBg: 'bg-gradient-to-br from-zinc-300/15 via-zinc-400/5 to-transparent', toneAccent: 'text-zinc-200', toneNumber: 'text-zinc-300', glow: 'shadow-[0_0_24px_-10px_rgba(212,212,216,0.5)]' },
-                { label: '3rd Place', toneBorder: 'border-orange-700/60', toneBg: 'bg-gradient-to-br from-orange-600/15 via-orange-700/5 to-transparent', toneAccent: 'text-orange-300', toneNumber: 'text-orange-400', glow: 'shadow-[0_0_22px_-10px_rgba(234,88,12,0.5)]' },
-              ][index];
-              return (
-                <button
-                  key={employee.id}
-                  onClick={() => onSelectEmployee(employee.id)}
-                  className={`surface-3d lift-3d w-full border p-4 text-left ${podium.toneBorder} ${podium.toneBg} ${podium.glow}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center border ${podium.toneBorder} ${podium.toneBg}`}>
-                      <div className={`font-display text-3xl leading-none ${podium.toneNumber}`}>{index + 1}</div>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className={`font-mono text-[10px] uppercase tracking-widest ${podium.toneAccent}`}>{podium.label}</div>
-                      <div className="truncate font-display text-2xl text-white">{employee.name}</div>
-                      <span className={`mt-1 inline-block border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest ${statusClasses[todayStatus.tone]}`}>
-                        {todayStatus.label}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-baseline justify-between border-t border-white/5 pt-3">
-                    <div>
-                      <div className={`font-display text-3xl leading-none ${podium.toneNumber}`}>{fmtNum(Math.round(monthlyKm))}</div>
-                      <div className="font-mono text-[9px] uppercase text-zinc-500">km this month</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-display text-lg text-zinc-200">{config.currency} {fmtNum(Math.round(fuelCost))}</div>
-                      <div className="font-mono text-[9px] uppercase text-zinc-500">fuel cost</div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
           </div>
         )}
       </div>
