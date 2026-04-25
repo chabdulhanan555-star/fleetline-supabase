@@ -785,7 +785,33 @@ const ThemeStyles = () => (
       50% { opacity: 0.45; }
     }
     .pulse-dot { animation: pulse-orange 1.5s ease-in-out infinite; }
+    @keyframes pulse-attention {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,6,0.0); }
+      50% { box-shadow: 0 0 0 6px rgba(217,119,6,0.18); }
+    }
+    .pulse-attention { animation: pulse-attention 2.2s ease-in-out infinite; }
     input:focus, textarea:focus, select:focus { outline: none; }
+    .field-focus:focus {
+      background-color: rgba(217, 119, 6, 0.06);
+      box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.55);
+    }
+    .empty-state {
+      border: 2px dashed rgba(245, 158, 11, 0.32);
+      background:
+        linear-gradient(160deg, rgba(217,119,6,0.06), transparent 55%),
+        linear-gradient(155deg, rgba(23,32,42,0.92), rgba(8,12,17,0.92));
+      border-radius: 18px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,253,247,0.06),
+        0 18px 38px rgba(0,0,0,0.32);
+    }
+    .empty-state .empty-icon {
+      filter: drop-shadow(0 0 18px rgba(217,119,6,0.35));
+    }
+    .stat-tone-orange { background: linear-gradient(155deg, rgba(217,119,6,0.10), rgba(8,12,17,0.96)); }
+    .stat-tone-gold { background: linear-gradient(155deg, rgba(234,179,8,0.10), rgba(8,12,17,0.96)); }
+    .stat-tone-teal { background: linear-gradient(155deg, rgba(15,118,110,0.12), rgba(8,12,17,0.96)); }
+    .stat-tone-white { background: linear-gradient(155deg, rgba(255,253,247,0.06), rgba(8,12,17,0.96)); }
   `}</style>
 );
 
@@ -842,15 +868,15 @@ const BrandHeader = ({ onLogout, userName, subtitle }) => (
 
 const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
   const colors = {
-    orange: 'text-orange-500 border-orange-500/30',
-    gold: 'text-amber-400 border-amber-400/30',
-    white: 'text-white border-zinc-700',
+    orange: 'text-orange-500 border-orange-500/30 stat-tone-orange',
+    gold: 'text-amber-400 border-amber-400/30 stat-tone-gold',
+    white: 'text-white border-zinc-700 stat-tone-white',
   };
-  const [textColor, borderColor] = colors[accent].split(' ');
+  const [textColor, borderColor, toneClass] = colors[accent].split(' ');
 
   return (
-    <div className={`surface-3d relative overflow-hidden border bg-zinc-950 p-4 ${borderColor}`}>
-      <div className="absolute right-0 top-0 h-16 w-16 opacity-5">
+    <div className={`surface-3d relative overflow-hidden border p-4 ${borderColor} ${toneClass}`}>
+      <div className="absolute right-0 top-0 h-16 w-16 opacity-10">
         <Icon className={`h-full w-full ${textColor}`} />
       </div>
       <div className="mb-2 flex items-center gap-1.5">
@@ -869,7 +895,12 @@ const BarChart = ({ rows, valueLabel = (value) => fmtNum(Math.round(value)), emp
   const maxValue = Math.max(0, ...rows.map((row) => Number(row.value) || 0));
 
   if (!rows.length || maxValue <= 0) {
-    return <div className="surface-3d border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">{emptyText}</div>;
+    return (
+      <div className="empty-state p-6 text-center">
+        <BarChart3 className="empty-icon mx-auto mb-2 h-8 w-8 text-orange-500/80" />
+        <div className="text-sm text-zinc-400">{emptyText}</div>
+      </div>
+    );
   }
 
   return (
@@ -1096,7 +1127,7 @@ const Modal = ({ open, onClose, title, children }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-5">
-      <div className="w-full max-w-lg border border-orange-500/25 bg-black sm:max-h-[90vh] sm:overflow-y-auto">
+      <div className="w-full max-w-lg border border-orange-500/25 bg-black sm:max-h-[90vh] sm:overflow-y-auto lg:max-w-2xl">
         <div className="flex items-center justify-between border-b border-orange-500/15 px-5 py-4">
           <div className="font-display text-2xl text-white">{title}</div>
           <button onClick={onClose} className="text-zinc-500 transition-colors hover:text-orange-500">
@@ -1133,7 +1164,7 @@ const Input = ({ label, icon: Icon, helper, ...props }) => (
       {Icon ? <Icon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" /> : null}
       <input
         {...props}
-        className={`w-full border border-zinc-800 bg-black py-3 pr-3 text-white transition-colors focus:border-orange-500 ${
+        className={`field-focus min-h-[48px] w-full border border-zinc-800 bg-black py-3 pr-3 text-white transition-colors focus:border-orange-500 ${
           Icon ? 'pl-10' : 'pl-3'
         }`}
       />
@@ -1932,10 +1963,10 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
       </div>
 
       {employees.length === 0 ? (
-        <div className="surface-3d border border-dashed border-zinc-800 p-10 text-center">
-          <Users className="mx-auto mb-3 h-12 w-12 text-zinc-700" />
+        <div className="empty-state p-10 text-center">
+          <Users className="empty-icon mx-auto mb-4 h-14 w-14 text-orange-500/80" />
           <div className="mb-1 font-display text-2xl text-white">No Riders Yet</div>
-          <div className="mb-4 text-sm text-zinc-500">Add your first rider to start tracking fuel usage.</div>
+          <div className="mb-4 text-sm text-zinc-400">Add your first rider to start tracking fuel usage.</div>
           <button
             onClick={() => {
               setEditing(null);
@@ -2278,7 +2309,11 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
         </details>
       ))}
       {auditRows.length === 0 ? (
-        <div className="surface-3d border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No audit rows found.</div>
+        <div className="empty-state p-10 text-center">
+          <History className="empty-icon mx-auto mb-4 h-12 w-12 text-orange-500/80" />
+          <div className="mb-1 font-display text-2xl text-white">No Audit Rows</div>
+          <div className="text-sm text-zinc-400">Activity by admins will appear here as it happens.</div>
+        </div>
       ) : null}
     </div>
 
@@ -2335,8 +2370,9 @@ const EmployeeRouteHistory = ({ employee, routeSessions = [], routePoints = [], 
     <div>
       <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// GPS Route Proof</div>
       {rows.length === 0 ? (
-        <div className="surface-3d border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
-          No GPS route recorded for this month.
+        <div className="empty-state p-8 text-center">
+          <Route className="empty-icon mx-auto mb-3 h-10 w-10 text-orange-500/80" />
+          <div className="text-sm text-zinc-400">No GPS route recorded for this month.</div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -2743,7 +2779,7 @@ const RiderSubmitView = ({
                 {routeTracking.message}
               </div>
             ) : null}
-            <div className="mt-3 grid grid-cols-3 gap-2 font-mono text-[9px] uppercase text-zinc-500">
+            <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase text-zinc-500 sm:grid-cols-3 sm:text-[9px]">
               <div>
                 Points
                 <div className="font-display text-xl text-white">{routeTracking?.pointCount ?? 0}</div>
@@ -2752,7 +2788,7 @@ const RiderSubmitView = ({
                 GPS
                 <div className="font-display text-xl text-amber-400">{fmtDistance(routeTracking?.totalDistanceM ?? 0)}</div>
               </div>
-              <div>
+              <div className="col-span-2 sm:col-span-1">
                 Queued
                 <div className="font-display text-xl text-orange-500">{queuedRouteCount ?? 0}</div>
               </div>
@@ -2762,7 +2798,7 @@ const RiderSubmitView = ({
       </div>
 
       {queuedCount > 0 || queuedRouteCount > 0 ? (
-        <div className={`surface-3d border p-4 ${failedCount > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
+        <div className={`surface-3d border p-4 ${failedCount > 0 ? 'border-red-500/30 bg-red-500/10 pulse-attention' : 'border-amber-500/30 bg-amber-500/10'}`}>
           <div className="mb-1 flex items-center gap-2">
             <CloudOff className={`h-4 w-4 ${failedCount > 0 ? 'text-red-300' : 'text-amber-400'}`} />
             <div className={`font-mono text-[10px] uppercase tracking-widest ${failedCount > 0 ? 'text-red-200' : 'text-amber-300'}`}>
@@ -2813,13 +2849,22 @@ const RiderSubmitView = ({
           </div>
         ) : (
           <div>
-            <img src={photoPreview} alt="Odometer preview" className="h-56 w-full border border-orange-500/30 object-cover" />
+            <div className="relative">
+              <img src={photoPreview} alt="Odometer preview" className="h-56 w-full border border-orange-500/30 object-cover" />
+              {submitting ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 backdrop-blur-sm">
+                  <Loader2 className="h-10 w-10 animate-spin text-orange-500" />
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-amber-300">Uploading photo...</div>
+                </div>
+              ) : null}
+            </div>
             <button
               onClick={() => {
                 if (photoPreview) URL.revokeObjectURL(photoPreview);
                 resetForm();
               }}
-              className="mt-2 w-full py-2 font-mono text-xs uppercase tracking-widest text-zinc-500 hover:text-orange-500"
+              disabled={submitting}
+              className="mt-2 w-full py-2 font-mono text-xs uppercase tracking-widest text-zinc-500 transition-colors hover:text-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Retake photo
             </button>
@@ -2992,8 +3037,10 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
       <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// All Readings</div>
         {readings.length === 0 ? (
-          <div className="surface-3d border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-            No readings yet. Submit your first one today.
+          <div className="empty-state p-10 text-center">
+            <History className="empty-icon mx-auto mb-4 h-12 w-12 text-orange-500/80" />
+            <div className="mb-1 font-display text-2xl text-white">No Readings Yet</div>
+            <div className="text-sm text-zinc-400">Submit your first reading today to start your monthly stats.</div>
           </div>
         ) : (
           <div className="space-y-1">
@@ -3999,12 +4046,12 @@ export default function App() {
                   setAdminTab(tab.id);
                   setSelectedEmployeeId(null);
                 }}
-                className={`relative flex flex-col items-center gap-0.5 py-3 transition-colors ${
+                className={`relative flex min-w-0 flex-col items-center gap-0.5 px-1 py-3 transition-colors ${
                   adminTab === tab.id && !selectedEmployeeId ? 'text-orange-500' : 'text-zinc-500'
                 }`}
               >
-                <tab.icon className="h-5 w-5" />
-                <div className="font-mono text-[9px] uppercase tracking-widest">{tab.label}</div>
+                <tab.icon className="h-5 w-5 shrink-0" />
+                <div className="w-full truncate text-center font-mono text-[9px] uppercase tracking-wider sm:tracking-widest sm:text-[10px]">{tab.label}</div>
                 {adminTab === tab.id && !selectedEmployeeId ? <div className="absolute bottom-0 h-0.5 w-8 bg-orange-500"></div> : null}
               </button>
             ))}
@@ -4068,12 +4115,12 @@ export default function App() {
             <button
               key={tab.id}
               onClick={() => setRiderTab(tab.id)}
-              className={`relative flex flex-col items-center gap-0.5 py-3 transition-colors ${
+              className={`relative flex min-w-0 flex-col items-center gap-0.5 px-1 py-3 transition-colors ${
                 riderTab === tab.id ? 'text-orange-500' : 'text-zinc-500'
               }`}
             >
-              <tab.icon className="h-5 w-5" />
-              <div className="font-mono text-[9px] uppercase tracking-widest">{tab.label}</div>
+              <tab.icon className="h-5 w-5 shrink-0" />
+              <div className="w-full truncate text-center font-mono text-[10px] uppercase tracking-widest sm:text-[11px]">{tab.label}</div>
               {riderTab === tab.id ? <div className="absolute bottom-0 h-0.5 w-8 bg-orange-500"></div> : null}
             </button>
           ))}
