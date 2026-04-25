@@ -45,7 +45,10 @@ function missingConfigError() {
 function todayIso(offsetDays = 0) {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function createDemoStore() {
@@ -85,10 +88,11 @@ function createDemoStore() {
       {
         id: 'demo-reading-1',
         employeeId: employees[0].id,
-        date: todayIso(-2),
+        date: todayIso(-1),
         km: 12420,
+        readingType: 'morning',
         photoPath: null,
-        submittedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+        submittedAt: new Date(Date.now() - 86400000).toISOString(),
         submittedBy: employees[0].id,
       },
       {
@@ -96,6 +100,7 @@ function createDemoStore() {
         employeeId: employees[0].id,
         date: todayIso(-1),
         km: 12492,
+        readingType: 'evening',
         photoPath: null,
         submittedAt: new Date(Date.now() - 86400000).toISOString(),
         submittedBy: employees[0].id,
@@ -105,6 +110,7 @@ function createDemoStore() {
         employeeId: employees[1].id,
         date: todayIso(-1),
         km: 8820,
+        readingType: 'evening',
         photoPath: null,
         submittedAt: new Date(Date.now() - 85000000).toISOString(),
         submittedBy: employees[1].id,
@@ -368,6 +374,7 @@ function mapReading(row) {
     employeeId: row.employee_id,
     date: row.date,
     km: row.km,
+    readingType: row.reading_type ?? 'evening',
     photoPath: row.photo_path,
     submittedAt: row.submitted_at,
     submittedBy: row.submitted_by,
@@ -606,7 +613,7 @@ export function subscribeReadings(callback) {
     query: (client) =>
       client
         .from('readings')
-        .select('id, employee_id, date, km, photo_path, submitted_at, submitted_by')
+        .select('id, employee_id, date, km, reading_type, photo_path, submitted_at, submitted_by')
         .order('date', { ascending: false })
         .order('submitted_at', { ascending: false }),
     callback: (rows) => callback((rows ?? []).map(mapReading)),
@@ -743,6 +750,7 @@ export async function saveReading(reading) {
       employeeId: reading.employeeId,
       date: reading.date,
       km: reading.km,
+      readingType: reading.readingType ?? 'evening',
       photoPath: reading.photoPath,
       submittedAt: reading.submittedAt ?? new Date().toISOString(),
       submittedBy: demoSession?.role === 'rider' ? demoSession.employee.id : 'demo-admin',
@@ -760,6 +768,7 @@ export async function saveReading(reading) {
     employee_id: reading.employeeId,
     date: reading.date,
     km: reading.km,
+    reading_type: reading.readingType ?? 'evening',
     photo_path: reading.photoPath,
     submitted_at: reading.submittedAt ?? new Date().toISOString(),
   };
@@ -767,7 +776,7 @@ export async function saveReading(reading) {
   const { data, error } = await client
     .from('readings')
     .insert(payload)
-    .select('id, employee_id, date, km, photo_path, submitted_at, submitted_by')
+    .select('id, employee_id, date, km, reading_type, photo_path, submitted_at, submitted_by')
     .single();
 
   if (error) {
