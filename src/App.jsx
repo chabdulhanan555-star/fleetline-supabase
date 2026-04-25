@@ -552,6 +552,58 @@ const ThemeStyles = () => (
       background: linear-gradient(145deg, rgba(255,253,247,0.08), rgba(5,8,12,0.56));
       box-shadow: inset 0 1px 0 rgba(255,253,247,0.1), 0 12px 22px rgba(0,0,0,0.24);
     }
+    .button-3d {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      border-radius: 14px;
+      transform: translateY(0);
+      box-shadow:
+        0 11px 0 rgba(0,0,0,0.32),
+        0 22px 34px rgba(0,0,0,0.34),
+        inset 0 1px 0 rgba(255,253,247,0.28),
+        inset 0 -1px 0 rgba(0,0,0,0.28);
+      transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+    }
+    .button-3d::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(115deg, rgba(255,253,247,0.26), transparent 28%, rgba(255,253,247,0.08) 46%, transparent 66%);
+      opacity: 0.95;
+    }
+    .button-3d-primary {
+      border: 1px solid rgba(254,243,199,0.48);
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 48%, #92400e 100%);
+      color: #05080c;
+    }
+    .button-3d-outline {
+      border: 1px solid rgba(245,158,11,0.56);
+      background: linear-gradient(145deg, rgba(217,119,6,0.18), rgba(5,8,12,0.86));
+      color: #fbbf24;
+    }
+    .button-3d-whatsapp {
+      border: 1px solid rgba(220,252,231,0.38);
+      background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+      color: #fffdf7;
+      box-shadow:
+        0 11px 0 rgba(4, 79, 45, 0.48),
+        0 22px 34px rgba(0,0,0,0.34),
+        0 0 22px rgba(37,211,102,0.22),
+        inset 0 1px 0 rgba(255,253,247,0.3);
+    }
+    .button-3d:active {
+      transform: translateY(7px);
+      box-shadow:
+        0 4px 0 rgba(0,0,0,0.34),
+        0 10px 18px rgba(0,0,0,0.28),
+        inset 0 1px 0 rgba(255,253,247,0.18);
+    }
+    .button-3d:disabled {
+      transform: none;
+      box-shadow: inset 0 1px 0 rgba(255,253,247,0.1), 0 8px 18px rgba(0,0,0,0.2);
+    }
     .bar-track-3d {
       border-radius: 999px;
       box-shadow: inset 0 2px 6px rgba(0,0,0,0.55);
@@ -572,6 +624,13 @@ const ThemeStyles = () => (
           0 34px 68px rgba(0,0,0,0.42),
           0 9px 0 rgba(0,0,0,0.22),
           inset 0 1px 0 rgba(255,253,247,0.16);
+      }
+      .button-3d:hover:not(:disabled) {
+        transform: translateY(-2px);
+        filter: brightness(1.08);
+      }
+      .button-3d:active:not(:disabled) {
+        transform: translateY(7px);
       }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -1239,7 +1298,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                   {phone && alert.message ? (
                     <button
                       onClick={() => openWhatsApp(alert.employee.phone, alert.message)}
-                      className="mt-3 flex w-full items-center justify-center gap-2 bg-[#25D366] py-2.5 font-display tracking-widest text-white transition-all hover:brightness-110"
+                      className="button-3d button-3d-whatsapp mt-3 flex w-full items-center justify-center gap-2 py-2.5 font-display tracking-widest text-white transition-all hover:brightness-110"
                     >
                       <MessageCircle className="h-4 w-4" /> REMIND ON WHATSAPP
                     </button>
@@ -1328,7 +1387,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         {employees.length > 0 ? (
           <button
             onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
-            className="flex w-full items-center justify-center gap-2 border border-amber-400/50 bg-black py-3 font-display tracking-widest text-amber-400 hover:bg-amber-400/10"
+            className="button-3d button-3d-outline flex w-full items-center justify-center gap-2 py-3 font-display tracking-widest"
           >
             <FileDown className="h-4 w-4" /> EXPORT MONTHLY CSV
           </button>
@@ -1433,7 +1492,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
             setEditing(null);
             setShowModal(true);
           }}
-          className="glow-orange flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 font-display tracking-widest text-black"
+          className="button-3d button-3d-primary glow-orange flex items-center gap-1.5 px-4 py-2.5 font-display tracking-widest"
         >
           <UserPlus className="h-4 w-4" /> ADD
         </button>
@@ -1449,7 +1508,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
               setEditing(null);
               setShowModal(true);
             }}
-            className="glow-orange bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3 font-display tracking-widest text-black"
+            className="button-3d button-3d-primary glow-orange px-6 py-3 font-display tracking-widest"
           >
             + ADD FIRST RIDER
           </button>
@@ -1661,7 +1720,7 @@ const AdminSettings = ({ config, onSave }) => {
 
       <button
         onClick={handleSave}
-        className="glow-orange w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black"
+        className="button-3d button-3d-primary glow-orange w-full py-3 font-display tracking-widest"
       >
         {saved ? 'ALL SETTINGS SAVED' : 'SAVE SETTINGS'}
       </button>
@@ -1712,7 +1771,7 @@ const AdminsPanel = ({ admins, onRefresh, onInvite }) => {
             }
           }}
           disabled={submitting || !email}
-          className="glow-orange w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
+          className="button-3d button-3d-primary glow-orange w-full py-3 font-display tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
         >
           {submitting ? 'SENDING INVITE...' : 'SEND INVITE'}
         </button>
@@ -2172,7 +2231,7 @@ const RiderSubmitView = ({
             <div className="mb-4 mt-1 text-xs text-zinc-500">Every reading must include an odometer photo.</div>
             <button
               onClick={() => fileInput.current?.click()}
-              className="glow-orange flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3 font-display tracking-widest text-black"
+              className="button-3d button-3d-primary glow-orange flex items-center gap-2 px-6 py-3 font-display tracking-widest"
             >
               <Camera className="h-4 w-4" /> TAKE PHOTO
             </button>
@@ -2296,7 +2355,7 @@ const RiderSubmitView = ({
           }
         }}
         disabled={!canSubmit}
-        className="glow-orange w-full bg-gradient-to-r from-orange-500 to-amber-500 py-4 font-display text-xl tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
+        className="button-3d button-3d-primary glow-orange w-full py-4 font-display text-xl tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
       >
         {submitting ? 'SUBMITTING...' : `SUBMIT ${selectedTypeConfig.shortLabel.toUpperCase()} ->`}
       </button>
@@ -2310,7 +2369,7 @@ const RiderSubmitView = ({
             const message = `*FleetLine Reading*\n\n*Rider:* ${employee.name}\n*Bike:* ${employee.bikePlate}${employee.bikeModel ? ` (${employee.bikeModel})` : ''}\n*Type:* ${selectedTypeConfig.label}\n*Date:* ${fmtDate(todayDate)}\n*Odometer:* ${fmtNum(Number.parseInt(reading, 10))} km${dailyLine}\n\n_Sent from FleetLine_`;
             onShareWhatsApp(message);
           }}
-          className="flex w-full items-center justify-center gap-2 bg-[#25D366] py-3 font-display tracking-widest text-white transition-all hover:brightness-110"
+          className="button-3d button-3d-whatsapp flex w-full items-center justify-center gap-2 py-3 font-display tracking-widest text-white transition-all hover:brightness-110"
         >
           <MessageCircle className="h-5 w-5" />
           ALSO SEND VIA WHATSAPP
