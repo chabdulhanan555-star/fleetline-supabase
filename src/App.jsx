@@ -31,6 +31,7 @@ import {
   Sun,
   Trash2,
   TrendingUp,
+  Trophy,
   Upload,
   User,
   UserPlus,
@@ -1757,77 +1758,116 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       </div>
 
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Monthly Report</div>
+        <div className="mb-2 flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
+          <span>// Monthly Report &mdash; Full Ledger</span>
+          <span className="text-zinc-600">A&ndash;Z &middot; tap a row for details</span>
+        </div>
         {monthlyReportRows.length === 0 ? (
-          <div className="surface-3d border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders to report yet.</div>
+          <div className="empty-state p-10 text-center">
+            <FileDown className="empty-icon mx-auto mb-3 h-10 w-10 text-orange-500/80" />
+            <div className="text-sm text-zinc-400">Add riders and submit readings to populate the ledger.</div>
+          </div>
         ) : (
           <div className="table-3d overflow-hidden border border-zinc-800 bg-zinc-950">
-            <div className="grid grid-cols-[1.2fr_0.8fr_1fr] border-b border-zinc-800 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-              <div>Rider</div>
-              <div className="text-right">Monthly KM</div>
-              <div className="text-right">Fuel Cost</div>
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px]">
+                <div className="grid grid-cols-[1.4fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] border-b border-zinc-800 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">
+                  <div>Rider</div>
+                  <div className="text-right">Days</div>
+                  <div className="text-right">KM</div>
+                  <div className="text-right">Litres</div>
+                  <div className="text-right">Cost</div>
+                  <div className="text-right">{config.currency}/km</div>
+                </div>
+                {[...monthlyReportRows]
+                  .sort((left, right) => left.employee.name.localeCompare(right.employee.name))
+                  .map(({ employee, monthlyKm, fuelCost, summary, incompleteDays }) => {
+                    const completed = summary.completedDays;
+                    const totalDays = completed + incompleteDays;
+                    const costPerKm = monthlyKm > 0 ? fuelCost / monthlyKm : 0;
+                    const incomplete = incompleteDays > 0;
+                    return (
+                      <button
+                        key={employee.id}
+                        onClick={() => onSelectEmployee(employee.id)}
+                        className="grid w-full grid-cols-[1.4fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] items-center gap-2 border-b border-zinc-900 px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-orange-500/5"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-white">{employee.name}</div>
+                          <div className="truncate font-mono text-[9px] uppercase text-zinc-500">{employee.bikePlate || 'no plate'}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`font-display text-lg leading-none ${incomplete ? 'text-amber-300' : 'text-green-300'}`}>
+                            {completed}
+                            <span className="font-mono text-[10px] text-zinc-500">/{totalDays || completed}</span>
+                          </div>
+                          {incomplete ? (
+                            <div className="font-mono text-[8px] uppercase text-amber-400/80">{incompleteDays} gap{incompleteDays === 1 ? '' : 's'}</div>
+                          ) : null}
+                        </div>
+                        <div className="text-right font-display text-lg leading-none text-amber-400">{fmtNum(Math.round(monthlyKm))}</div>
+                        <div className="text-right font-display text-lg leading-none text-zinc-200">{summary.fuelUsed.toFixed(1)}</div>
+                        <div className="text-right">
+                          <div className="font-display text-lg leading-none text-orange-500">{fmtNum(Math.round(fuelCost))}</div>
+                          <div className="font-mono text-[8px] uppercase text-zinc-500">{config.currency}</div>
+                        </div>
+                        <div className="text-right font-mono text-[11px] tabular-nums text-zinc-300">
+                          {monthlyKm > 0 ? costPerKm.toFixed(1) : '-'}
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
             </div>
-            {monthlyReportRows.map(({ employee, monthlyKm, fuelCost, summary }) => (
-              <button
-                key={employee.id}
-                onClick={() => onSelectEmployee(employee.id)}
-                className="grid w-full grid-cols-[1.2fr_0.8fr_1fr] items-center gap-2 border-b border-zinc-900 px-3 py-3 text-left last:border-b-0 hover:bg-orange-500/5"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-semibold text-white">{employee.name}</div>
-                  <div className="font-mono text-[9px] uppercase text-zinc-500">{summary.completedDays} completed days</div>
-                </div>
-                <div className="text-right font-display text-2xl leading-none text-amber-400">{fmtNum(Math.round(monthlyKm))}</div>
-                <div className="text-right">
-                  <div className="font-display text-2xl leading-none text-orange-500">
-                    {fmtNum(Math.round(fuelCost))}
-                  </div>
-                  <div className="font-mono text-[9px] uppercase text-zinc-500">{config.currency}</div>
-                </div>
-              </button>
-            ))}
           </div>
         )}
       </div>
 
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Rider Leaderboard</div>
-        {employees.length === 0 ? (
-          <div className="surface-3d border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders yet.</div>
+        <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
+          <Trophy className="h-3.5 w-3.5 text-yellow-400" /> // Top Riders Podium
+        </div>
+        {leaderboardRows.length === 0 || (leaderboardRows[0]?.monthlyKm ?? 0) === 0 ? (
+          <div className="empty-state p-8 text-center">
+            <Trophy className="empty-icon mx-auto mb-3 h-10 w-10 text-yellow-400/80" />
+            <div className="text-sm text-zinc-400">Once riders start logging KMs this month, the top three will show up here.</div>
+          </div>
         ) : (
-          <div className="space-y-2">
-            {leaderboardRows.map(({ employee, monthlyKm, fuelCost, summary, incompleteDays, todayStatus }, index) => {
+          <div className="grid gap-2 md:grid-cols-3">
+            {leaderboardRows.slice(0, 3).map(({ employee, monthlyKm, fuelCost, todayStatus }, index) => {
+              const podium = [
+                { label: '1st Place', toneBorder: 'border-yellow-400/60', toneBg: 'bg-gradient-to-br from-yellow-500/20 via-amber-500/10 to-transparent', toneAccent: 'text-yellow-300', toneNumber: 'text-yellow-400', glow: 'shadow-[0_0_30px_-8px_rgba(250,204,21,0.55)]' },
+                { label: '2nd Place', toneBorder: 'border-zinc-300/40', toneBg: 'bg-gradient-to-br from-zinc-300/15 via-zinc-400/5 to-transparent', toneAccent: 'text-zinc-200', toneNumber: 'text-zinc-300', glow: 'shadow-[0_0_24px_-10px_rgba(212,212,216,0.5)]' },
+                { label: '3rd Place', toneBorder: 'border-orange-700/60', toneBg: 'bg-gradient-to-br from-orange-600/15 via-orange-700/5 to-transparent', toneAccent: 'text-orange-300', toneNumber: 'text-orange-400', glow: 'shadow-[0_0_22px_-10px_rgba(234,88,12,0.5)]' },
+              ][index];
               return (
                 <button
                   key={employee.id}
                   onClick={() => onSelectEmployee(employee.id)}
-                  className="surface-3d lift-3d flex w-full items-center gap-3 border border-zinc-800 bg-zinc-950 p-3 text-left transition-colors hover:border-orange-500"
+                  className={`surface-3d lift-3d w-full border p-4 text-left ${podium.toneBorder} ${podium.toneBg} ${podium.glow}`}
                 >
-                  <div className="relative flex h-11 w-11 items-center justify-center border border-orange-500/40 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
-                    <div className="font-display text-xl text-orange-500">#{index + 1}</div>
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="font-semibold text-white">{employee.name}</div>
-                      <span className={`border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest ${statusClasses[todayStatus.tone]}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center border ${podium.toneBorder} ${podium.toneBg}`}>
+                      <div className={`font-display text-3xl leading-none ${podium.toneNumber}`}>{index + 1}</div>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className={`font-mono text-[10px] uppercase tracking-widest ${podium.toneAccent}`}>{podium.label}</div>
+                      <div className="truncate font-display text-2xl text-white">{employee.name}</div>
+                      <span className={`mt-1 inline-block border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest ${statusClasses[todayStatus.tone]}`}>
                         {todayStatus.label}
                       </span>
                     </div>
-                    <div className="font-mono text-[10px] text-zinc-500">
-                      {employee.bikePlate} | {employee.bikeModel || 'bike'}
+                  </div>
+                  <div className="mt-3 flex items-baseline justify-between border-t border-white/5 pt-3">
+                    <div>
+                      <div className={`font-display text-3xl leading-none ${podium.toneNumber}`}>{fmtNum(Math.round(monthlyKm))}</div>
+                      <div className="font-mono text-[9px] uppercase text-zinc-500">km this month</div>
                     </div>
-                    <div className="mt-1 font-mono text-[9px] uppercase text-zinc-600">
-                      {summary.completedDays} complete days | {incompleteDays} incomplete
+                    <div className="text-right">
+                      <div className="font-display text-lg text-zinc-200">{config.currency} {fmtNum(Math.round(fuelCost))}</div>
+                      <div className="font-mono text-[9px] uppercase text-zinc-500">fuel cost</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-display text-xl leading-none text-amber-400">{fmtNum(monthlyKm)}</div>
-                    <div className="font-mono text-[10px] uppercase text-zinc-500">km this mo</div>
-                    <div className="mt-1 font-mono text-[9px] uppercase text-orange-500">
-                      {config.currency} {fmtNum(Math.round(fuelCost))}
-                    </div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-zinc-600" />
                 </button>
               );
             })}
