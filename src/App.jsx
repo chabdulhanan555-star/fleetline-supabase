@@ -611,7 +611,7 @@ const Toast = ({ toast }) => {
 };
 
 const BrandHeader = ({ onLogout, userName, subtitle }) => (
-  <div className="sticky top-0 z-30 bg-black/95 backdrop-blur border-b border-orange-500/20">
+  <div className="sticky top-0 z-30 border-b border-orange-500/20 bg-black/95 shadow-2xl backdrop-blur">
     <div className="h-1 ticker-border"></div>
     <div className="flex items-center justify-between px-5 py-3">
       <div className="flex items-center gap-2">
@@ -801,7 +801,7 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
       <ThemeStyles />
       <div className="h-1 ticker-border"></div>
       <div className="flex flex-1 items-center justify-center px-5 py-10">
-        <div className="w-full max-w-sm">
+        <div className="dashboard-3d w-full max-w-sm">
           <div className="mb-8 text-center">
             <div className="relative mb-4 inline-block">
               <div className="absolute inset-0 bg-orange-500/20 blur-2xl"></div>
@@ -834,7 +834,7 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
 
           {mode === 'rider' ? (
             <div>
-              <div className="mb-4 border border-orange-500/30 bg-orange-500/5 p-5">
+              <div className="surface-3d mb-4 border border-orange-500/30 bg-orange-500/5 p-5">
                 <User className="mb-3 h-8 w-8 text-orange-500" />
                 <div className="mb-1 font-display text-2xl text-white">Rider Login</div>
                 <div className="mb-4 text-sm text-zinc-400">Enter the username and PIN given by your admin.</div>
@@ -859,13 +859,13 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
               <button
                 onClick={handleRiderSubmit}
                 disabled={loading || !username.trim() || pin.length !== 4}
-                className="w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display text-lg tracking-widest text-black glow-orange disabled:cursor-not-allowed disabled:opacity-40"
+                className="glow-orange w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display text-lg tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading ? 'VERIFYING...' : 'ENTER DASHBOARD ->'}
               </button>
               <button
                 onClick={() => setMode('admin')}
-                className="mt-4 flex w-full items-center justify-center gap-2 border border-amber-500/50 bg-black py-3 text-amber-400 transition-colors hover:bg-amber-500/10"
+                className="mini-surface-3d mt-4 flex w-full items-center justify-center gap-2 border border-amber-500/50 bg-black py-3 text-amber-400 transition-colors hover:bg-amber-500/10"
               >
                 <Shield className="h-4 w-4" />
                 <span className="font-display tracking-widest">ADMIN ACCESS</span>
@@ -881,7 +881,7 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
               >
                 <ArrowLeft className="h-3 w-3" /> Rider Login
               </button>
-              <div className="mb-4 border border-amber-500/30 bg-amber-500/5 p-5">
+              <div className="surface-3d mb-4 border border-amber-500/30 bg-amber-500/5 p-5">
                 <Shield className="mb-3 h-8 w-8 text-amber-400" />
                 <div className="mb-1 font-display text-2xl text-white">Admin Login</div>
                 <div className="mb-4 text-sm text-zinc-400">Email and password from Supabase Auth.</div>
@@ -1602,7 +1602,7 @@ const AdminSettings = ({ config, onSave }) => {
   };
 
   return (
-    <div className="space-y-4 p-5">
+    <div className="dashboard-3d space-y-4 p-5">
       <div>
         <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// System</div>
         <div className="font-display text-3xl leading-none text-white">Settings</div>
@@ -1676,7 +1676,7 @@ const AdminsPanel = ({ admins, onRefresh, onInvite }) => {
   const [submitting, setSubmitting] = useState(false);
 
   return (
-    <div className="space-y-4 p-5">
+    <div className="dashboard-3d space-y-4 p-5">
       <div className="flex items-center justify-between">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Access</div>
@@ -2071,7 +2071,7 @@ const RiderSubmitView = ({
   };
 
   return (
-    <div className="space-y-4 p-5">
+    <div className="dashboard-3d space-y-4 p-5">
       <div>
         <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Daily Submission</div>
         <div className="font-display text-3xl leading-none text-white">
@@ -2091,7 +2091,7 @@ const RiderSubmitView = ({
               key={type}
               onClick={() => !locked && setReadingType(type)}
               disabled={locked}
-              className={`border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-45 ${
+              className={`surface-3d border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-45 ${
                 active
                   ? 'border-orange-500 bg-orange-500/10'
                   : submittedReading
@@ -2112,7 +2112,7 @@ const RiderSubmitView = ({
         })}
       </div>
 
-      <div className="border border-zinc-800 bg-zinc-950 p-4">
+      <div className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
         <div className="mb-2 flex items-center gap-2">
           <SelectedTypeIcon className="h-4 w-4 text-orange-500" />
           <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500">
@@ -2121,7 +2121,7 @@ const RiderSubmitView = ({
         </div>
         <div className="text-sm text-zinc-400">{selectedTypeConfig.helper}</div>
         {todaySummary.complete ? (
-          <div className={`mt-3 border p-3 ${todaySummary.invalid ? 'border-red-500/30 bg-red-500/10' : 'border-green-500/30 bg-green-500/10'}`}>
+          <div className={`mini-surface-3d mt-3 border p-3 ${todaySummary.invalid ? 'border-red-500/30 bg-red-500/10' : 'border-green-500/30 bg-green-500/10'}`}>
             <div className={`font-display text-2xl ${todaySummary.invalid ? 'text-red-300' : 'text-green-300'}`}>
               Today: {fmtNum(todaySummary.distance)} km
             </div>
@@ -2143,7 +2143,7 @@ const RiderSubmitView = ({
       </div>
 
       {queuedCount > 0 ? (
-        <div className={`border p-4 ${failedCount > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
+        <div className={`surface-3d border p-4 ${failedCount > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
           <div className="mb-1 flex items-center gap-2">
             <CloudOff className={`h-4 w-4 ${failedCount > 0 ? 'text-red-300' : 'text-amber-400'}`} />
             <div className={`font-mono text-[10px] uppercase tracking-widest ${failedCount > 0 ? 'text-red-200' : 'text-amber-300'}`}>
@@ -2164,7 +2164,7 @@ const RiderSubmitView = ({
         </div>
       ) : null}
 
-      <div className="border-2 border-dashed border-zinc-800 bg-zinc-950 p-5">
+      <div className="surface-3d border-2 border-dashed border-zinc-800 bg-zinc-950 p-5">
         {!photoPreview ? (
           <div className="flex flex-col items-center py-6 text-center">
             <div className="mb-3 flex h-16 w-16 items-center justify-center border border-orange-500/30 bg-orange-500/10">
@@ -2210,7 +2210,7 @@ const RiderSubmitView = ({
 
       <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Enter Reading</div>
-        <div className="border-2 border-zinc-800 bg-black p-4">
+        <div className="surface-3d border-2 border-zinc-800 bg-black p-4">
           <div className="mb-2 flex items-center gap-2">
             <Gauge className="h-4 w-4 text-amber-500" />
             <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Odometer Reading (KM)</div>
@@ -2237,7 +2237,7 @@ const RiderSubmitView = ({
             </div>
           ) : null}
           {projectedRawDistance !== null ? (
-            <div className={`mt-3 border p-3 ${projectedRawDistance < 0 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
+            <div className={`mini-surface-3d mt-3 border p-3 ${projectedRawDistance < 0 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
               <div className={`font-mono text-[10px] uppercase tracking-widest ${projectedRawDistance < 0 ? 'text-red-300' : 'text-amber-300'}`}>
                 Daily KM Preview
               </div>
@@ -2334,7 +2334,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
   const todayCost = todayFuel * Number(config.fuelPrice);
 
   return (
-    <div className="space-y-4 p-5">
+    <div className="dashboard-3d space-y-4 p-5">
       <div>
         <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
           // {new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
@@ -2347,7 +2347,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
         <StatCard label="Fuel Used" value={fuelUsed.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
       </div>
 
-      <div className="border border-zinc-800 bg-zinc-950 p-5">
+      <div className="surface-3d border border-zinc-800 bg-zinc-950 p-5">
         <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500">Today</div>
         {todaySummary.complete ? (
           <>
@@ -2373,7 +2373,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
       <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// All Readings</div>
         {readings.length === 0 ? (
-          <div className="border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
+          <div className="surface-3d border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
             No readings yet. Submit your first one today.
           </div>
         ) : (
@@ -2382,7 +2382,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
               const previous = list[index + 1];
               const diff = previous ? reading.km - previous.km : null;
               return (
-                <div key={reading.id} className="flex items-center gap-3 border border-zinc-800 bg-zinc-950 p-3">
+                <div key={reading.id} className="surface-3d flex items-center gap-3 border border-zinc-800 bg-zinc-950 p-3">
                   <div className="flex h-10 w-10 flex-col items-center justify-center border border-orange-500/40">
                     <div className="font-display text-sm leading-none text-orange-500">{new Date(reading.date).getDate()}</div>
                     <div className="font-mono text-[8px] uppercase text-amber-500">
@@ -2868,7 +2868,7 @@ export default function App() {
           </>
         )}
 
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-orange-500/20 bg-black/95 backdrop-blur">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-orange-500/20 bg-black/95 shadow-2xl backdrop-blur">
           <div className="grid grid-cols-5">
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 },
@@ -2941,7 +2941,7 @@ export default function App() {
         />
       ) : null}
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-orange-500/20 bg-black/95 backdrop-blur">
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-orange-500/20 bg-black/95 shadow-2xl backdrop-blur">
         <div className="grid grid-cols-2">
           {[
             { id: 'today', label: 'Submit', icon: Camera },
