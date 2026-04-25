@@ -85,15 +85,32 @@ const READING_TYPES = {
 };
 
 const HIGH_DAILY_KM_WARNING = 300;
-
-const localIsoDate = (date = new Date()) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+const APP_TIME_ZONE = 'Asia/Karachi';
+const MISSING_READING_CUTOFFS = {
+  morning: { hour: 11, label: '11:00 AM' },
+  evening: { hour: 18, label: '6:00 PM' },
 };
 
-const today = () => localIsoDate();
+const getAppDateTime = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value ?? '00';
+
+  return {
+    date: `${value('year')}-${value('month')}-${value('day')}`,
+    hour: Number(value('hour')),
+    minute: Number(value('minute')),
+  };
+};
+
+const today = () => getAppDateTime().date;
 const monthKey = (value) => value.slice(0, 7);
 const fmtDate = (value) =>
   new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -126,8 +143,17 @@ const downloadCSV = (rows, filename) => {
 
 const sanitizePhone = (value) => (value || '').replace(/[^\d]/g, '');
 
+const normalizeWhatsAppPhone = (value) => {
+  const digits = sanitizePhone(value);
+  if (!digits) return '';
+  if (digits.startsWith('00')) return digits.slice(2);
+  if (digits.startsWith('0')) return `92${digits.slice(1)}`;
+  if (digits.length === 10 && digits.startsWith('3')) return `92${digits}`;
+  return digits;
+};
+
 const openWhatsApp = (phone, message) => {
-  const clean = sanitizePhone(phone);
+  const clean = normalizeWhatsAppPhone(phone);
   const url = clean
     ? `https://wa.me/${clean}?text=${encodeURIComponent(message)}`
     : `https://wa.me/?text=${encodeURIComponent(message)}`;
@@ -194,6 +220,48 @@ const getMonthlySummary = (readings, selectedMonth, mileage, fuelPrice) => {
     cost: fuelUsed * Number(fuelPrice),
     warningCount: dailySummaries.filter((day) => day.invalid || day.distance > HIGH_DAILY_KM_WARNING).length,
   };
+};
+
+const getMinutesSinceMidnight = (date = new Date()) => {
+  const appTime = getAppDateTime(date);
+  return appTime.hour * 60 + appTime.minute;
+};
+
+const isPastCutoff = (type, date = new Date()) =>
+  getMinutesSinceMidnight(date) >= MISSING_READING_CUTOFFS[type].hour * 60;
+
+const getMissingReadingAlerts = (employees, readingsByEmployee, date = today(), now = new Date()) => {
+  const alerts = [];
+
+  employees
+    .filter((employee) => employee.active !== false)
+    .forEach((employee) => {
+      const summary = getDaySummary(readingsByEmployee[employee.id] || [], date);
+
+      if (isPastCutoff('morning', now) && !summary.morning) {
+        alerts.push({
+          id: `${employee.id}-morning`,
+          employee,
+          type: 'morning',
+          title: 'Missing Morning Start',
+          dueLabel: MISSING_READING_CUTOFFS.morning.label,
+          message: `Assalam o Alaikum ${employee.name}, please submit your Morning Start odometer reading with photo for ${fmtDate(date)} in FleetLine.`,
+        });
+      }
+
+      if (isPastCutoff('evening', now) && !summary.evening) {
+        alerts.push({
+          id: `${employee.id}-evening`,
+          employee,
+          type: 'evening',
+          title: 'Missing Evening End',
+          dueLabel: MISSING_READING_CUTOFFS.evening.label,
+          message: `Assalam o Alaikum ${employee.name}, please submit your Evening End odometer reading with photo for ${fmtDate(date)} in FleetLine.`,
+        });
+      }
+    });
+
+  return alerts;
 };
 
 const buildReadingsMap = (rows) =>
@@ -746,7 +814,18 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
 };
 
 const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee }) => {
+  const [now, setNow] = useState(() => new Date());
   const thisMonth = monthKey(today());
+  const alertDate = today();
+  const missingAlerts = getMissingReadingAlerts(employees, readingsByEmployee, alertDate, now);
+  const morningAlerts = missingAlerts.filter((alert) => alert.type === 'morning').length;
+  const eveningAlerts = missingAlerts.filter((alert) => alert.type === 'evening').length;
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 60000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const monthlyReportRows = employees.map((employee) => {
     const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
       (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
@@ -788,6 +867,69 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         <StatCard label="Today" value={stats.activeToday} unit={`/ ${employees.length}`} icon={CheckCircle} accent="gold" />
         <StatCard label="Monthly KM" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
         <StatCard label="Fuel Used" value={stats.totalFuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
+      </div>
+
+      <div className={`border p-5 ${missingAlerts.length > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-green-500/30 bg-green-500/5'}`}>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <div className={`font-mono text-[10px] uppercase tracking-widest ${missingAlerts.length > 0 ? 'text-red-300' : 'text-green-300'}`}>
+              // Missing Reading Alerts
+            </div>
+            <div className="font-display text-3xl leading-none text-white">
+              {missingAlerts.length > 0 ? `${missingAlerts.length} Reminder${missingAlerts.length === 1 ? '' : 's'} Needed` : 'All Clear'}
+            </div>
+            <div className="mt-1 text-xs text-zinc-500">
+              Morning alerts start after {MISSING_READING_CUTOFFS.morning.label}. Evening alerts start after {MISSING_READING_CUTOFFS.evening.label}.
+            </div>
+          </div>
+          <div className="text-right font-mono text-[10px] uppercase text-zinc-500">
+            {fmtDate(alertDate)}
+            <div className={missingAlerts.length > 0 ? 'text-red-300' : 'text-green-300'}>
+              {morningAlerts} morning | {eveningAlerts} evening
+            </div>
+          </div>
+        </div>
+
+        {missingAlerts.length > 0 ? (
+          <div className="space-y-2">
+            {missingAlerts.map((alert) => {
+              const Icon = READING_TYPES[alert.type].icon;
+              const phone = normalizeWhatsAppPhone(alert.employee.phone);
+              return (
+                <div key={alert.id} className="border border-red-500/20 bg-black/50 p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center border border-red-500/30 bg-red-500/10">
+                      <Icon className="h-5 w-5 text-red-300" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-white">{alert.employee.name}</div>
+                      <div className="font-mono text-[10px] uppercase text-red-200">{alert.title} after {alert.dueLabel}</div>
+                      <div className="mt-0.5 font-mono text-[10px] text-zinc-500">
+                        {alert.employee.bikePlate} | {alert.employee.phone || 'No phone saved'}
+                      </div>
+                    </div>
+                  </div>
+                  {phone ? (
+                    <button
+                      onClick={() => openWhatsApp(alert.employee.phone, alert.message)}
+                      className="mt-3 flex w-full items-center justify-center gap-2 bg-[#25D366] py-2.5 font-display tracking-widest text-white transition-all hover:brightness-110"
+                    >
+                      <MessageCircle className="h-4 w-4" /> REMIND ON WHATSAPP
+                    </button>
+                  ) : (
+                    <div className="mt-3 border border-amber-500/30 bg-amber-500/10 p-2 font-mono text-[10px] uppercase text-amber-300">
+                      Add this rider&apos;s phone number to enable WhatsApp reminders.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="border border-green-500/20 bg-black/40 p-3 font-mono text-[10px] uppercase text-green-300">
+            No missing rider readings at the current cutoff time.
+          </div>
+        )}
       </div>
 
       <div className="border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent p-5">
