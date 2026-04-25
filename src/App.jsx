@@ -2227,7 +2227,6 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
   const todaySummary = getDaySummary(readings, today());
   const distance = monthlySummary.totalKm;
   const fuelUsed = monthlySummary.fuelUsed;
-  const cost = monthlySummary.cost;
   const todayFuel = mileage > 0 ? todaySummary.distance / mileage : 0;
   const todayCost = todayFuel * Number(config.fuelPrice);
 
@@ -2266,16 +2265,6 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
             </div>
           </div>
         )}
-      </div>
-
-      <div className="border border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-amber-500/5 p-5">
-        <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500">Monthly Fuel Cost</div>
-        <div className="mt-1 font-display text-4xl text-orange-500">
-          {config.currency} {fmtNum(Math.round(cost))}
-        </div>
-        <div className="mt-1 font-mono text-[10px] text-zinc-500">
-          @ {config.currency} {config.fuelPrice}/L | {mileage} km/L
-        </div>
       </div>
 
       {readings.length > 0 ? (
