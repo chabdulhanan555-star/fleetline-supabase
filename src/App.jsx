@@ -114,7 +114,6 @@ const REVIEW_STATUS = {
   pending_review: { label: 'Pending', tone: 'amber' },
   approved: { label: 'Approved', tone: 'green' },
   problem: { label: 'Problem', tone: 'red' },
-  paid: { label: 'Paid', tone: 'green' },
 };
 const ROUTE_TRACKING_KEY = 'fleetline.active-route-session.v1';
 const ROUTE_SAMPLE_INTERVAL_MS = 60000;
@@ -1927,7 +1926,7 @@ const AdminOverview = ({
   const needsReviewCount = dailyCloseRows.filter(
     (row) =>
       row.flags.length > 0 ||
-      (row.daySummary.complete && !['approved', 'paid'].includes(row.review?.status ?? '')),
+      (row.daySummary.complete && row.review?.status !== 'approved'),
   ).length;
 
   useEffect(() => {
