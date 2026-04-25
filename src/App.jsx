@@ -2267,15 +2267,6 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
         )}
       </div>
 
-      {readings.length > 0 ? (
-        <button
-          onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, thisMonth), `${employee.username}_${thisMonth}.csv`)}
-          className="flex w-full items-center justify-center gap-2 border border-amber-400/40 bg-zinc-950 py-3 font-display tracking-widest text-amber-400 hover:bg-amber-400/5"
-        >
-          <FileDown className="h-4 w-4" /> EXPORT MY REPORT
-        </button>
-      ) : null}
-
       <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// All Readings</div>
         {readings.length === 0 ? (
