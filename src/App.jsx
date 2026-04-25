@@ -50,10 +50,12 @@ import {
   resetRiderPin,
   riderLogin,
   saveConfig,
+  saveDailyReport,
   saveEmployee,
   saveReading,
   signOut,
   subscribeConfig,
+  subscribeDailyReports,
   subscribeEmployees,
   subscribeReadings,
   uploadPhoto,
@@ -203,18 +205,45 @@ const buildReadingsMap = (rows) =>
     return accumulator;
   }, {});
 
-const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => {
+const buildReportsMap = (rows) =>
+  rows.reduce((accumulator, row) => {
+    accumulator[row.employeeId] = accumulator[row.employeeId] || [];
+    accumulator[row.employeeId].push(row);
+    return accumulator;
+  }, {});
+
+const getReportForDate = (reports, date = today()) =>
+  reports.find((report) => report.date === date) ?? null;
+
+const getMarketSummary = (reports, selectedMonth) =>
+  reports
+    .filter((report) => !selectedMonth || monthKey(report.date) === selectedMonth)
+    .reduce(
+      (summary, report) => ({
+        reports: summary.reports + 1,
+        shopsVisited: summary.shopsVisited + Number(report.shopsVisited ?? 0),
+        salesAmount: summary.salesAmount + Number(report.salesAmount ?? 0),
+        cashCollected: summary.cashCollected + Number(report.cashCollected ?? 0),
+      }),
+      { reports: 0, shopsVisited: 0, salesAmount: 0, cashCollected: 0 },
+    );
+
+const buildFleetCSV = (employees, readingsByEmployee, dailyReportsByEmployee, config, selectedMonth) => {
   const rows = [
     [`FleetLine Fleet Report - ${selectedMonth || 'All time'}`],
     [`Generated: ${new Date().toLocaleString()}`],
     [`Fuel price: ${config.currency} ${config.fuelPrice}/L`],
     [],
-    ['Rider', 'Username', 'Bike Plate', 'Bike Model', 'Mileage (km/L)', 'Readings', 'Completed Days', 'Total KM', 'Fuel (L)', `Cost (${config.currency})`],
+    ['Rider', 'Username', 'Bike Plate', 'Bike Model', 'Mileage (km/L)', 'Readings', 'Completed Days', 'Total KM', 'Fuel (L)', `Fuel Cost (${config.currency})`, 'Reports', 'Shops', `Sales (${config.currency})`, `Cash (${config.currency})`],
   ];
 
   let grandKm = 0;
   let grandFuel = 0;
   let grandCost = 0;
+  let grandReports = 0;
+  let grandShops = 0;
+  let grandSales = 0;
+  let grandCash = 0;
 
   employees.forEach((employee) => {
     const mileage = Number(employee.mileage ?? config.defaultMileage);
@@ -222,10 +251,15 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => 
       (reading) => !selectedMonth || monthKey(reading.date) === selectedMonth,
     );
     const summary = getMonthlySummary(readings, selectedMonth, mileage, config.fuelPrice);
+    const reportSummary = getMarketSummary(dailyReportsByEmployee[employee.id] || [], selectedMonth);
 
     grandKm += summary.totalKm;
     grandFuel += summary.fuelUsed;
     grandCost += summary.cost;
+    grandReports += reportSummary.reports;
+    grandShops += reportSummary.shopsVisited;
+    grandSales += reportSummary.salesAmount;
+    grandCash += reportSummary.cashCollected;
 
     rows.push([
       employee.name,
@@ -238,31 +272,52 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => 
       summary.totalKm,
       summary.fuelUsed.toFixed(2),
       summary.cost.toFixed(2),
+      reportSummary.reports,
+      reportSummary.shopsVisited,
+      reportSummary.salesAmount.toFixed(2),
+      reportSummary.cashCollected.toFixed(2),
     ]);
   });
 
   rows.push([]);
-  rows.push(['FLEET TOTAL', '', '', '', '', '', '', grandKm, grandFuel.toFixed(2), grandCost.toFixed(2)]);
+  rows.push([
+    'FLEET TOTAL',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    grandKm,
+    grandFuel.toFixed(2),
+    grandCost.toFixed(2),
+    grandReports,
+    grandShops,
+    grandSales.toFixed(2),
+    grandCash.toFixed(2),
+  ]);
   return rows;
 };
 
-const buildEmployeeCSV = (employee, readingsByEmployee, config, selectedMonth) => {
+const buildEmployeeCSV = (employee, readingsByEmployee, dailyReportsByEmployee, config, selectedMonth) => {
   const mileage = Number(employee.mileage ?? config.defaultMileage);
   const readings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
     (reading) => !selectedMonth || monthKey(reading.date) === selectedMonth,
   );
+  const reports = dailyReportsByEmployee[employee.id] || [];
 
   const rows = [
     [`FleetLine Report - ${employee.name} (${employee.bikePlate})`],
     [`Month: ${selectedMonth || 'All time'} | Generated: ${new Date().toLocaleString()}`],
     [`Mileage: ${mileage} km/L | Fuel price: ${config.currency} ${config.fuelPrice}/L`],
     [],
-    ['Date', 'Morning Odo', 'Evening Odo', 'Daily Distance (km)', 'Fuel Used (L)', `Cost (${config.currency})`, 'Status'],
+    ['Date', 'Morning Odo', 'Evening Odo', 'Daily Distance (km)', 'Fuel Used (L)', `Fuel Cost (${config.currency})`, 'Market Area', 'Shops', `Sales (${config.currency})`, `Cash (${config.currency})`, 'Notes', 'Status'],
   ];
 
   const dailySummaries = getMonthlySummary(readings, selectedMonth, mileage, config.fuelPrice).dailySummaries;
 
   dailySummaries.forEach((day) => {
+    const report = getReportForDate(reports, day.date);
     const distance = day.complete ? day.distance : 0;
     const fuel = mileage > 0 && day.complete ? distance / mileage : 0;
     const cost = fuel * Number(config.fuelPrice);
@@ -273,6 +328,11 @@ const buildEmployeeCSV = (employee, readingsByEmployee, config, selectedMonth) =
       distance,
       fuel.toFixed(2),
       cost.toFixed(2),
+      report?.marketArea ?? '',
+      report?.shopsVisited ?? '',
+      report?.salesAmount?.toFixed?.(2) ?? '',
+      report?.cashCollected?.toFixed?.(2) ?? '',
+      report?.notes ?? '',
       day.invalid ? 'Check odometer: evening lower than morning' : day.complete ? 'Complete' : 'Incomplete',
     ]);
   });
@@ -745,7 +805,7 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
   );
 };
 
-const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee }) => {
+const AdminOverview = ({ employees, readingsByEmployee, dailyReportsByEmployee, config, onSelectEmployee }) => {
   const thisMonth = monthKey(today());
   const stats = employees.reduce(
     (accumulator, employee) => {
@@ -754,12 +814,17 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       );
       const mileage = Number(employee.mileage ?? config.defaultMileage);
       const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice);
+      const reportSummary = getMarketSummary(dailyReportsByEmployee[employee.id] || [], thisMonth);
       accumulator.totalKm += summary.totalKm;
       accumulator.totalFuel += summary.fuelUsed;
+      accumulator.totalSales += reportSummary.salesAmount;
+      accumulator.totalCash += reportSummary.cashCollected;
+      accumulator.totalShops += reportSummary.shopsVisited;
       accumulator.activeToday += monthlyReadings.some((reading) => reading.date === today()) ? 1 : 0;
+      accumulator.reportsToday += (dailyReportsByEmployee[employee.id] || []).some((report) => report.date === today()) ? 1 : 0;
       return accumulator;
     },
-    { totalKm: 0, totalFuel: 0, activeToday: 0 },
+    { totalKm: 0, totalFuel: 0, totalSales: 0, totalCash: 0, totalShops: 0, activeToday: 0, reportsToday: 0 },
   );
 
   return (
@@ -776,6 +841,8 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         <StatCard label="Today" value={stats.activeToday} unit={`/ ${employees.length}`} icon={CheckCircle} accent="gold" />
         <StatCard label="Total KM" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
         <StatCard label="Fuel Used" value={stats.totalFuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
+        <StatCard label="Cash" value={fmtNum(Math.round(stats.totalCash))} unit={config.currency} icon={DollarSign} accent="orange" />
+        <StatCard label="Reports" value={stats.reportsToday} unit={`/ ${employees.length} today`} icon={PackageCheck} accent="gold" />
       </div>
 
       <div className="border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent p-5">
@@ -790,7 +857,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
 
       {employees.length > 0 ? (
         <button
-          onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
+          onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, dailyReportsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
           className="flex w-full items-center justify-center gap-2 border border-amber-400/50 bg-zinc-950 py-3 font-display tracking-widest text-amber-400 hover:bg-amber-400/10"
         >
           <FileDown className="h-4 w-4" /> EXPORT FLEET REPORT
@@ -809,6 +876,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
               );
               const mileage = Number(employee.mileage ?? config.defaultMileage);
               const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice);
+              const reportSummary = getMarketSummary(dailyReportsByEmployee[employee.id] || [], thisMonth);
               const distance = summary.totalKm;
               const didToday = monthlyReadings.some((reading) => reading.date === today());
 
@@ -831,6 +899,9 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                   <div className="text-right">
                     <div className="font-display text-xl leading-none text-amber-400">{fmtNum(distance)}</div>
                     <div className="font-mono text-[10px] uppercase text-zinc-500">km this mo</div>
+                    <div className="mt-1 font-mono text-[9px] uppercase text-zinc-600">
+                      cash {fmtNum(Math.round(reportSummary.cashCollected))}
+                    </div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-zinc-600" />
                 </button>
@@ -1243,6 +1314,7 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
 const EmployeeDetailView = ({
   employee,
   readings,
+  dailyReports,
   config,
   onBack,
   onUpdateEmployee,
@@ -1257,8 +1329,12 @@ const EmployeeDetailView = ({
 
   const months = [...new Set(sortReadingsAsc(readings).map((reading) => monthKey(reading.date)))];
   const filtered = sortReadingsAsc(readings).filter((reading) => monthKey(reading.date) === selectedMonth);
+  const filteredReports = [...dailyReports]
+    .filter((report) => monthKey(report.date) === selectedMonth)
+    .sort((left, right) => right.date.localeCompare(left.date));
   const mileage = Number(employee.mileage ?? config.defaultMileage);
   const monthlySummary = getMonthlySummary(filtered, selectedMonth, mileage, config.fuelPrice);
+  const reportSummary = getMarketSummary(dailyReports, selectedMonth);
   const distance = monthlySummary.totalKm;
   const fuelUsed = monthlySummary.fuelUsed;
   const cost = monthlySummary.cost;
@@ -1324,18 +1400,20 @@ const EmployeeDetailView = ({
           <StatCard label="Fuel" value={fuelUsed.toFixed(2)} unit="L" icon={Fuel} accent="gold" />
           <StatCard label="Cost" value={fmtNum(Math.round(cost))} unit={config.currency} icon={DollarSign} accent="orange" />
           <StatCard label="Readings" value={filtered.length} unit="entries" icon={CheckCircle} accent="gold" />
+          <StatCard label="Cash" value={fmtNum(Math.round(reportSummary.cashCollected))} unit={config.currency} icon={DollarSign} accent="orange" />
+          <StatCard label="Shops" value={fmtNum(reportSummary.shopsVisited)} unit="visits" icon={PackageCheck} accent="gold" />
         </div>
 
         {readings.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, selectedMonth), `${employee.username}_${selectedMonth}.csv`)}
+              onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, { [employee.id]: dailyReports }, config, selectedMonth), `${employee.username}_${selectedMonth}.csv`)}
               className="flex items-center justify-center gap-1.5 border border-amber-400/40 bg-zinc-950 py-2.5 font-display text-sm tracking-widest text-amber-400 hover:bg-amber-400/10"
             >
               <FileDown className="h-3.5 w-3.5" /> MONTH CSV
             </button>
             <button
-              onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, null), `${employee.username}_all.csv`)}
+              onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, { [employee.id]: dailyReports }, config, null), `${employee.username}_all.csv`)}
               className="flex items-center justify-center gap-1.5 border border-orange-500/40 bg-zinc-950 py-2.5 font-display text-sm tracking-widest text-orange-500 hover:bg-orange-500/10"
             >
               <Upload className="h-3.5 w-3.5" /> ALL TIME
@@ -1412,6 +1490,38 @@ const EmployeeDetailView = ({
             </div>
           )}
         </div>
+
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Market Reports</div>
+          {filteredReports.length === 0 ? (
+            <div className="border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No market reports for this month.</div>
+          ) : (
+            <div className="space-y-2">
+              {filteredReports.map((report) => (
+                <div key={report.id} className="border border-zinc-800 bg-zinc-950 p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-display text-2xl leading-none text-white">{report.marketArea}</div>
+                      <div className="font-mono text-[10px] uppercase text-zinc-500">{fmtDate(report.date)}</div>
+                    </div>
+                    <div className="font-mono text-[10px] uppercase text-amber-400">{fmtNum(report.shopsVisited)} shops</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 font-mono text-[10px] uppercase">
+                    <div className="border border-zinc-800 bg-black p-3 text-zinc-500">
+                      Sales
+                      <div className="mt-1 font-display text-2xl text-white">{config.currency} {fmtNum(Math.round(report.salesAmount))}</div>
+                    </div>
+                    <div className="border border-zinc-800 bg-black p-3 text-zinc-500">
+                      Cash
+                      <div className="mt-1 font-display text-2xl text-amber-400">{config.currency} {fmtNum(Math.round(report.cashCollected))}</div>
+                    </div>
+                  </div>
+                  {report.notes ? <div className="mt-3 text-sm text-zinc-400">{report.notes}</div> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <Modal open={showEdit} onClose={() => setShowEdit(false)} title="EDIT RIDER">
@@ -1441,15 +1551,163 @@ const EmployeeDetailView = ({
   );
 };
 
+const DailyReportStep = ({ employee, report, todaySummary, config, onSubmitReport }) => {
+  const [form, setForm] = useState({
+    marketArea: '',
+    shopsVisited: '',
+    salesAmount: '',
+    cashCollected: '',
+    notes: '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const eveningDone = Boolean(todaySummary.evening);
+
+  useEffect(() => {
+    setForm({
+      marketArea: report?.marketArea ?? '',
+      shopsVisited: report ? String(report.shopsVisited) : '',
+      salesAmount: report ? String(report.salesAmount) : '',
+      cashCollected: report ? String(report.cashCollected) : '',
+      notes: report?.notes ?? '',
+    });
+  }, [report]);
+
+  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const marketArea = form.marketArea.trim();
+  const shopsVisited = Number.parseInt(form.shopsVisited || '0', 10);
+  const salesAmount = Number.parseFloat(form.salesAmount || '0');
+  const cashCollected = Number.parseFloat(form.cashCollected || '0');
+  const collectionGap = Math.max(0, salesAmount - cashCollected);
+  const valid =
+    eveningDone &&
+    marketArea.length > 1 &&
+    Number.isFinite(shopsVisited) &&
+    shopsVisited >= 0 &&
+    Number.isFinite(salesAmount) &&
+    salesAmount >= 0 &&
+    Number.isFinite(cashCollected) &&
+    cashCollected >= 0;
+
+  const handleSubmit = async () => {
+    if (!valid) {
+      window.alert(eveningDone ? 'Please complete the market report fields.' : 'Submit Evening End before Step 3.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onSubmitReport({
+        employeeId: employee.id,
+        date: todaySummary.date,
+        marketArea,
+        shopsVisited,
+        salesAmount,
+        cashCollected,
+        notes: form.notes.trim(),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className={`border p-5 ${report ? 'border-green-500/30 bg-green-500/5' : 'border-zinc-800 bg-zinc-950'}`}>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500">Step 3</div>
+          <div className="font-display text-3xl leading-none text-white">Daily Market Report</div>
+          <div className="mt-1 text-xs text-zinc-500">Submit this after Evening End so admin can track sales and cash collection.</div>
+          {report?.queued ? (
+            <div className="mt-2 font-mono text-[10px] uppercase text-amber-400">
+              Queued on this phone. It will sync when internet returns.
+            </div>
+          ) : null}
+        </div>
+        {report ? <CheckCircle className="h-5 w-5 text-green-400" /> : <PackageCheck className="h-5 w-5 text-amber-400" />}
+      </div>
+
+      {!eveningDone ? (
+        <div className="border border-amber-500/30 bg-amber-500/10 p-3 font-mono text-[10px] uppercase text-amber-300">
+          Locked until Evening End is submitted.
+        </div>
+      ) : null}
+
+      <fieldset disabled={!eveningDone || submitting} className="mt-4 disabled:opacity-50">
+        <Input
+          label="Market / Route Area"
+          icon={PackageCheck}
+          value={form.marketArea}
+          onChange={(event) => update('marketArea', event.target.value)}
+          placeholder="e.g. Main Market, Saddar"
+        />
+        <Input
+          label="Shops Visited"
+          icon={Hash}
+          inputMode="numeric"
+          value={form.shopsVisited}
+          onChange={(event) => update('shopsVisited', event.target.value.replace(/[^\d]/g, ''))}
+          placeholder="0"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            label={`Sales (${config.currency})`}
+            icon={DollarSign}
+            inputMode="decimal"
+            value={form.salesAmount}
+            onChange={(event) => update('salesAmount', event.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="0"
+          />
+          <Input
+            label={`Cash (${config.currency})`}
+            icon={DollarSign}
+            inputMode="decimal"
+            value={form.cashCollected}
+            onChange={(event) => update('cashCollected', event.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="0"
+          />
+        </div>
+        <div className="mb-4">
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">Notes</div>
+          <textarea
+            value={form.notes}
+            onChange={(event) => update('notes', event.target.value)}
+            placeholder="Short notes: issues, pending cash, important shop follow-ups..."
+            className="min-h-24 w-full border border-zinc-800 bg-black p-3 text-sm text-white transition-colors focus:border-orange-500"
+          />
+        </div>
+      </fieldset>
+
+      {eveningDone ? (
+        <div className="mb-4 border border-zinc-800 bg-black p-3 font-mono text-[10px] uppercase text-zinc-500">
+          Collection gap:{' '}
+          <span className={collectionGap > 0 ? 'text-amber-400' : 'text-green-400'}>
+            {config.currency} {fmtNum(Math.round(collectionGap))}
+          </span>
+        </div>
+      ) : null}
+
+      <button
+        onClick={handleSubmit}
+        disabled={!valid || submitting}
+        className="w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {submitting ? 'SAVING...' : report ? 'UPDATE DAILY REPORT' : 'SUBMIT DAILY REPORT'}
+      </button>
+    </div>
+  );
+};
+
 const RiderSubmitView = ({
   employee,
   readings,
+  dailyReports,
   config,
   queuedCount,
   failedCount,
   syncingCount,
   onRetrySync,
   onSubmit,
+  onSubmitReport,
   onShareWhatsApp,
 }) => {
   const fileInput = useRef(null);
@@ -1463,6 +1721,7 @@ const RiderSubmitView = ({
   const lastReading = allReadings.length > 0 ? allReadings.at(-1) : null;
   const todayDate = today();
   const todaySummary = getDaySummary(allReadings, todayDate);
+  const todayReport = getReportForDate(dailyReports, todayDate);
   const mileage = Number(employee.mileage ?? config.defaultMileage);
   const fuelPrice = Number(config.fuelPrice);
   const selectedTypeConfig = READING_TYPES[readingType];
@@ -1727,6 +1986,14 @@ const RiderSubmitView = ({
         {submitting ? 'SUBMITTING...' : `SUBMIT ${selectedTypeConfig.shortLabel.toUpperCase()} ->`}
       </button>
 
+      <DailyReportStep
+        employee={employee}
+        report={todayReport}
+        todaySummary={todaySummary}
+        config={config}
+        onSubmitReport={onSubmitReport}
+      />
+
       {reading && config.adminWhatsApp ? (
         <button
           onClick={() => {
@@ -1746,7 +2013,7 @@ const RiderSubmitView = ({
   );
 };
 
-const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
+const RiderHistoryView = ({ employee, readings, dailyReports, config, onPreviewPhoto }) => {
   const thisMonth = monthKey(today());
   const monthReadings = sortReadingsAsc(readings).filter((reading) => monthKey(reading.date) === thisMonth);
   const mileage = Number(employee.mileage ?? config.defaultMileage);
@@ -1807,7 +2074,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
 
       {readings.length > 0 ? (
         <button
-          onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, thisMonth), `${employee.username}_${thisMonth}.csv`)}
+          onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, { [employee.id]: dailyReports }, config, thisMonth), `${employee.username}_${thisMonth}.csv`)}
           className="flex w-full items-center justify-center gap-2 border border-amber-400/40 bg-zinc-950 py-3 font-display tracking-widest text-amber-400 hover:bg-amber-400/5"
         >
           <FileDown className="h-4 w-4" /> EXPORT MY REPORT
@@ -1877,6 +2144,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [readings, setReadings] = useState([]);
+  const [dailyReports, setDailyReports] = useState([]);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [queuedItems, setQueuedItems] = useState([]);
   const [admins, setAdmins] = useState([]);
@@ -1930,17 +2198,20 @@ export default function App() {
     if (!session) {
       setEmployees([]);
       setReadings([]);
+      setDailyReports([]);
       setConfig(DEFAULT_CONFIG);
       return undefined;
     }
 
     const unsubscribeEmployees = subscribeEmployees((rows) => setEmployees(rows));
     const unsubscribeReadings = subscribeReadings((rows) => setReadings(rows));
+    const unsubscribeDailyReports = subscribeDailyReports((rows) => setDailyReports(rows));
     const unsubscribeConfig = subscribeConfig((row) => setConfig(row));
 
     return () => {
       unsubscribeEmployees?.();
       unsubscribeReadings?.();
+      unsubscribeDailyReports?.();
       unsubscribeConfig?.();
     };
   }, [session]);
@@ -1999,7 +2270,15 @@ export default function App() {
     });
 
   const replayQueuedReading = async (item) => {
-    if (item.op !== 'reading.create') return;
+    if (item.op === 'daily_report.upsert') {
+      await saveDailyReport(item.payload);
+      return;
+    }
+
+    if (item.op !== 'reading.create') {
+      throw new Error(`Unknown outbox operation: ${item.op}`);
+    }
+
     const { payload } = item;
     const photoPath = await uploadPhoto(payload.employeeId, payload.readingId, payload.photoBlob);
     await saveReading({
@@ -2033,6 +2312,7 @@ export default function App() {
   }, [session]);
 
   const readingsByEmployee = useMemo(() => buildReadingsMap(readings), [readings]);
+  const dailyReportsByEmployee = useMemo(() => buildReportsMap(dailyReports), [dailyReports]);
   const selectedEmployee = selectedEmployeeId ? employees.find((employee) => employee.id === selectedEmployeeId) : null;
   const riderEmployee = useMemo(() => {
     if (session?.role !== 'rider') return null;
@@ -2058,10 +2338,36 @@ export default function App() {
       }));
   }, [queuedItems, riderEmployee]);
 
+  const riderQueuedReports = useMemo(() => {
+    if (!riderEmployee) return [];
+    return queuedItems
+      .filter((item) => item.op === 'daily_report.upsert' && item.payload.employeeId === riderEmployee.id)
+      .map((item) => ({
+        id: item.id,
+        employeeId: item.payload.employeeId,
+        date: item.payload.date,
+        marketArea: item.payload.marketArea,
+        shopsVisited: item.payload.shopsVisited,
+        salesAmount: item.payload.salesAmount,
+        cashCollected: item.payload.cashCollected,
+        notes: item.payload.notes ?? '',
+        submittedAt: item.queuedAt ? new Date(item.queuedAt).toISOString() : new Date().toISOString(),
+        submittedBy: riderEmployee.id,
+        updatedAt: item.queuedAt ? new Date(item.queuedAt).toISOString() : new Date().toISOString(),
+        queued: true,
+        outboxStatus: item.status ?? 'queued',
+      }));
+  }, [queuedItems, riderEmployee]);
+
   const riderReadings = useMemo(() => {
     if (!riderEmployee) return [];
     return [...(readingsByEmployee[riderEmployee.id] || []), ...riderQueuedReadings];
   }, [readingsByEmployee, riderEmployee, riderQueuedReadings]);
+
+  const riderDailyReports = useMemo(() => {
+    if (!riderEmployee) return [];
+    return [...riderQueuedReports, ...(dailyReportsByEmployee[riderEmployee.id] || [])];
+  }, [dailyReportsByEmployee, riderEmployee, riderQueuedReports]);
 
   const queuedCount = riderQueuedReadings.length;
   const failedQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'failed').length;
@@ -2237,6 +2543,38 @@ export default function App() {
     }
   };
 
+  const handleSubmitDailyReport = async (report) => {
+    const payload = {
+      ...report,
+      shopsVisited: Number(report.shopsVisited ?? 0),
+      salesAmount: Number(report.salesAmount ?? 0),
+      cashCollected: Number(report.cashCollected ?? 0),
+    };
+    const outboxId = `daily-report-${payload.employeeId}-${payload.date}`;
+
+    if (!navigator.onLine) {
+      await enqueue({ id: outboxId, op: 'daily_report.upsert', payload });
+      showToast('Offline: daily report queued for sync.', 'info');
+      return;
+    }
+
+    try {
+      await saveDailyReport(payload);
+      await flushQueuedReadings(false);
+      showToast('Daily market report saved.', 'success');
+    } catch (error) {
+      if (isLikelyNetworkError(error)) {
+        await enqueue({ id: outboxId, op: 'daily_report.upsert', payload });
+        showToast('Network issue: daily report queued for sync.', 'info');
+        return;
+      }
+
+      console.error(error);
+      showToast(error.message || 'Failed to save daily report.', 'error');
+      throw error;
+    }
+  };
+
   if (!authReady) {
     return <LoadingScreen />;
   }
@@ -2271,6 +2609,7 @@ export default function App() {
           <EmployeeDetailView
             employee={selectedEmployee}
             readings={readingsByEmployee[selectedEmployee.id] || []}
+            dailyReports={dailyReportsByEmployee[selectedEmployee.id] || []}
             config={config}
             onBack={() => setSelectedEmployeeId(null)}
             onUpdateEmployee={handleSaveEmployee}
@@ -2285,6 +2624,7 @@ export default function App() {
               <AdminOverview
                 employees={employees}
                 readingsByEmployee={readingsByEmployee}
+                dailyReportsByEmployee={dailyReportsByEmployee}
                 config={config}
                 onSelectEmployee={setSelectedEmployeeId}
               />
@@ -2367,12 +2707,14 @@ export default function App() {
         <RiderSubmitView
           employee={riderEmployee}
           readings={riderReadings}
+          dailyReports={riderDailyReports}
           config={config}
           queuedCount={queuedCount}
           failedCount={failedQueuedCount}
           syncingCount={syncingQueuedCount}
           onRetrySync={() => flushQueuedReadings(true)}
           onSubmit={handleSubmitReading}
+          onSubmitReport={handleSubmitDailyReport}
           onShareWhatsApp={(message) => openWhatsApp(config.adminWhatsApp, message)}
         />
       ) : null}
@@ -2380,6 +2722,7 @@ export default function App() {
         <RiderHistoryView
           employee={riderEmployee}
           readings={riderReadings}
+          dailyReports={riderDailyReports}
           config={config}
           onPreviewPhoto={handlePreviewPhoto}
         />

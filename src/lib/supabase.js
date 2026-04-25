@@ -27,6 +27,7 @@ const sessionListeners = new Set();
 const demoListeners = {
   employees: new Set(),
   readings: new Set(),
+  dailyReports: new Set(),
   config: new Set(),
 };
 
@@ -114,6 +115,21 @@ function createDemoStore() {
         photoPath: null,
         submittedAt: new Date(Date.now() - 85000000).toISOString(),
         submittedBy: employees[1].id,
+      },
+    ],
+    dailyReports: [
+      {
+        id: 'demo-report-1',
+        employeeId: employees[0].id,
+        date: todayIso(-1),
+        marketArea: 'Main Market',
+        shopsVisited: 18,
+        salesAmount: 24500,
+        cashCollected: 21000,
+        notes: 'Two shops asked for follow-up tomorrow.',
+        submittedAt: new Date(Date.now() - 86000000).toISOString(),
+        submittedBy: employees[0].id,
+        updatedAt: new Date(Date.now() - 86000000).toISOString(),
       },
     ],
     config: {
@@ -213,6 +229,10 @@ function notifyDemoTable(table) {
     demoListeners.readings.forEach((listener) => listener([...store.readings]));
   }
 
+  if (table === 'dailyReports') {
+    demoListeners.dailyReports.forEach((listener) => listener([...(store.dailyReports ?? [])]));
+  }
+
   if (table === 'config') {
     demoListeners.config.forEach((listener) => listener({ ...store.config }));
   }
@@ -236,6 +256,10 @@ function demoSubscribe(table, callback) {
 
   if (table === 'readings') {
     callback([...store.readings]);
+  }
+
+  if (table === 'dailyReports') {
+    callback([...(store.dailyReports ?? [])]);
   }
 
   if (table === 'config') {
@@ -378,6 +402,22 @@ function mapReading(row) {
     photoPath: row.photo_path,
     submittedAt: row.submitted_at,
     submittedBy: row.submitted_by,
+  };
+}
+
+function mapDailyReport(row) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    date: row.date,
+    marketArea: row.market_area,
+    shopsVisited: Number(row.shops_visited ?? 0),
+    salesAmount: Number(row.sales_amount ?? 0),
+    cashCollected: Number(row.cash_collected ?? 0),
+    notes: row.notes ?? '',
+    submittedAt: row.submitted_at,
+    submittedBy: row.submitted_by,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -620,6 +660,23 @@ export function subscribeReadings(callback) {
   });
 }
 
+export function subscribeDailyReports(callback) {
+  if (isDemoMode) {
+    return demoSubscribe('dailyReports', callback);
+  }
+
+  return subscribeTable({
+    table: 'daily_reports',
+    query: (client) =>
+      client
+        .from('daily_reports')
+        .select('id, employee_id, date, market_area, shops_visited, sales_amount, cash_collected, notes, submitted_at, submitted_by, updated_at')
+        .order('date', { ascending: false })
+        .order('submitted_at', { ascending: false }),
+    callback: (rows) => callback((rows ?? []).map(mapDailyReport)),
+  });
+}
+
 export function subscribeConfig(callback) {
   if (isDemoMode) {
     return demoSubscribe('config', callback);
@@ -806,6 +863,64 @@ export async function saveReading(reading) {
   }
 
   return mapReading(data);
+}
+
+export async function saveDailyReport(report) {
+  const now = new Date().toISOString();
+
+  if (isDemoMode) {
+    const store = readDemoStore();
+    store.dailyReports = store.dailyReports ?? [];
+    const existingIndex = store.dailyReports.findIndex(
+      (row) => row.employeeId === report.employeeId && row.date === report.date,
+    );
+    const row = {
+      id: existingIndex >= 0 ? store.dailyReports[existingIndex].id : crypto.randomUUID(),
+      employeeId: report.employeeId,
+      date: report.date,
+      marketArea: String(report.marketArea ?? '').trim(),
+      shopsVisited: Number(report.shopsVisited ?? 0),
+      salesAmount: Number(report.salesAmount ?? 0),
+      cashCollected: Number(report.cashCollected ?? 0),
+      notes: String(report.notes ?? '').trim(),
+      submittedAt: existingIndex >= 0 ? store.dailyReports[existingIndex].submittedAt : now,
+      submittedBy: demoSession?.role === 'rider' ? demoSession.employee.id : 'demo-admin',
+      updatedAt: now,
+    };
+
+    if (existingIndex >= 0) {
+      store.dailyReports[existingIndex] = row;
+    } else {
+      store.dailyReports.push(row);
+    }
+
+    writeDemoStore(store);
+    notifyDemoTable('dailyReports');
+    return row;
+  }
+
+  const client = ensureAuthenticatedClient();
+  const payload = {
+    employee_id: report.employeeId,
+    date: report.date,
+    market_area: String(report.marketArea ?? '').trim(),
+    shops_visited: Number(report.shopsVisited ?? 0),
+    sales_amount: Number(report.salesAmount ?? 0),
+    cash_collected: Number(report.cashCollected ?? 0),
+    notes: String(report.notes ?? '').trim() || null,
+  };
+
+  const { data, error } = await client
+    .from('daily_reports')
+    .upsert(payload, { onConflict: 'employee_id,date' })
+    .select('id, employee_id, date, market_area, shops_visited, sales_amount, cash_collected, notes, submitted_at, submitted_by, updated_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapDailyReport(data);
 }
 
 export async function saveConfig(config) {
