@@ -53,6 +53,8 @@ const demoListeners = {
   employees: new Set(),
   readings: new Set(),
   config: new Set(),
+  routeSessions: new Set(),
+  routePoints: new Set(),
 };
 
 let riderSession = isSupabaseConfigured ? readStoredRiderSession() : null;
@@ -171,13 +173,18 @@ function createDemoStore() {
       },
     ],
     photos: {},
+    routeSessions: [],
+    routePoints: [],
   };
 }
 
 function readDemoStore() {
   const raw = window.localStorage.getItem(DEMO_STORE_KEY);
   if (raw) {
-    return JSON.parse(raw);
+    const store = JSON.parse(raw);
+    store.routeSessions ??= [];
+    store.routePoints ??= [];
+    return store;
   }
 
   const store = createDemoStore();
@@ -241,6 +248,14 @@ function notifyDemoTable(table) {
   if (table === 'config') {
     demoListeners.config.forEach((listener) => listener({ ...store.config }));
   }
+
+  if (table === 'routeSessions') {
+    demoListeners.routeSessions.forEach((listener) => listener([...store.routeSessions]));
+  }
+
+  if (table === 'routePoints') {
+    demoListeners.routePoints.forEach((listener) => listener([...store.routePoints]));
+  }
 }
 
 async function blobToDataUrl(blob) {
@@ -265,6 +280,14 @@ function demoSubscribe(table, callback) {
 
   if (table === 'config') {
     callback({ ...store.config });
+  }
+
+  if (table === 'routeSessions') {
+    callback([...store.routeSessions]);
+  }
+
+  if (table === 'routePoints') {
+    callback([...store.routePoints]);
   }
 
   demoListeners[table].add(callback);
@@ -403,6 +426,40 @@ function mapReading(row) {
     photoPath: row.photo_path,
     submittedAt: row.submitted_at,
     submittedBy: row.submitted_by,
+  };
+}
+
+function mapRouteSession(row) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    date: row.date,
+    startReadingId: row.start_reading_id,
+    endReadingId: row.end_reading_id,
+    status: row.status,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    lastPointAt: row.last_point_at,
+    pointCount: row.point_count ?? 0,
+    totalDistanceM: row.total_distance_m ?? 0,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapRoutePoint(row) {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    employeeId: row.employee_id,
+    recordedAt: row.recorded_at,
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    accuracyM: row.accuracy_m === null ? null : Number(row.accuracy_m),
+    speedMps: row.speed_mps === null ? null : Number(row.speed_mps),
+    heading: row.heading === null ? null : Number(row.heading),
+    createdAt: row.created_at,
   };
 }
 
@@ -645,6 +702,64 @@ export function subscribeReadings(callback) {
   });
 }
 
+export function subscribeRouteSessions(callback) {
+  if (isDemoMode) {
+    return demoSubscribe('routeSessions', callback);
+  }
+
+  return subscribeTable({
+    table: 'route_sessions',
+    query: (client) =>
+      client
+        .from('route_sessions')
+        .select('id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at')
+        .order('date', { ascending: false })
+        .order('started_at', { ascending: false }),
+    callback: (rows) => callback((rows ?? []).map(mapRouteSession)),
+  });
+}
+
+export function subscribeRoutePoints(callback) {
+  if (isDemoMode) {
+    return demoSubscribe('routePoints', callback);
+  }
+
+  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+  return subscribeTable({
+    table: 'route_points',
+    query: (client) =>
+      client
+        .from('route_points')
+        .select('id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at')
+        .gte('recorded_at', since)
+        .order('recorded_at', { ascending: true }),
+    callback: (rows) => callback((rows ?? []).map(mapRoutePoint)),
+  });
+}
+
+export async function listRoutePointsForSession(sessionId) {
+  if (isDemoMode) {
+    return readDemoStore()
+      .routePoints
+      .filter((point) => point.sessionId === sessionId)
+      .sort((left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime());
+  }
+
+  const client = ensureAuthenticatedClient();
+  const { data, error } = await client
+    .from('route_points')
+    .select('id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at')
+    .eq('session_id', sessionId)
+    .order('recorded_at', { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map(mapRoutePoint);
+}
+
 export function subscribeConfig(callback) {
   if (isDemoMode) {
     return demoSubscribe('config', callback);
@@ -729,6 +844,8 @@ export async function deleteEmployee(employeeId) {
     const before = store.employees.find((row) => row.id === employeeId);
     store.employees = store.employees.filter((row) => row.id !== employeeId);
     store.readings = store.readings.filter((row) => row.employeeId !== employeeId);
+    store.routeSessions = store.routeSessions.filter((row) => row.employeeId !== employeeId);
+    store.routePoints = store.routePoints.filter((row) => row.employeeId !== employeeId);
     Object.keys(store.photos).forEach((path) => {
       if (path.includes(`/${employeeId}/`)) {
         delete store.photos[path];
@@ -738,6 +855,8 @@ export async function deleteEmployee(employeeId) {
     writeDemoStore(store);
     notifyDemoTable('employees');
     notifyDemoTable('readings');
+    notifyDemoTable('routeSessions');
+    notifyDemoTable('routePoints');
     return;
   }
 
@@ -831,6 +950,193 @@ export async function saveReading(reading) {
   }
 
   return mapReading(data);
+}
+
+export async function startRouteSession(session) {
+  if (isDemoMode) {
+    const store = readDemoStore();
+    const existing = store.routeSessions.find(
+      (row) => row.employeeId === session.employeeId && row.date === session.date,
+    );
+
+    if (existing) {
+      return existing;
+    }
+
+    const now = new Date().toISOString();
+    const row = {
+      id: session.id,
+      employeeId: session.employeeId,
+      date: session.date,
+      startReadingId: session.startReadingId,
+      endReadingId: null,
+      status: 'active',
+      startedAt: session.startedAt ?? now,
+      endedAt: null,
+      lastPointAt: null,
+      pointCount: 0,
+      totalDistanceM: 0,
+      createdBy: demoSession?.role === 'rider' ? demoSession.employee.id : 'demo-admin',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.routeSessions.unshift(row);
+    appendDemoAudit(store, 'route.start', 'route_session', row.id, null, row);
+    writeDemoStore(store);
+    notifyDemoTable('routeSessions');
+    return row;
+  }
+
+  const client = ensureAuthenticatedClient();
+  const payload = {
+    id: session.id,
+    employee_id: session.employeeId,
+    date: session.date,
+    start_reading_id: session.startReadingId,
+    status: 'active',
+    started_at: session.startedAt ?? new Date().toISOString(),
+  };
+
+  const queryColumns =
+    'id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at';
+  const { data, error } = await client
+    .from('route_sessions')
+    .insert(payload)
+    .select(queryColumns)
+    .single();
+
+  if (error?.code === '23505') {
+    const { data: existing, error: existingError } = await client
+      .from('route_sessions')
+      .select(queryColumns)
+      .eq('employee_id', session.employeeId)
+      .eq('date', session.date)
+      .single();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    return mapRouteSession(existing);
+  }
+
+  if (error) {
+    throw error;
+  }
+
+  return mapRouteSession(data);
+}
+
+export async function appendRoutePoints(points) {
+  if (!points?.length) return [];
+
+  if (isDemoMode) {
+    const store = readDemoStore();
+    const inserted = [];
+
+    points.forEach((point) => {
+      if (store.routePoints.some((row) => row.id === point.id)) return;
+      const row = {
+        id: point.id,
+        sessionId: point.sessionId,
+        employeeId: point.employeeId,
+        recordedAt: point.recordedAt,
+        lat: Number(point.lat),
+        lng: Number(point.lng),
+        accuracyM: point.accuracyM ?? null,
+        speedMps: point.speedMps ?? null,
+        heading: point.heading ?? null,
+        createdAt: new Date().toISOString(),
+      };
+      store.routePoints.push(row);
+      inserted.push(row);
+
+      const sessionRow = store.routeSessions.find((session) => session.id === point.sessionId);
+      if (sessionRow) {
+        sessionRow.pointCount = (sessionRow.pointCount ?? 0) + 1;
+        sessionRow.lastPointAt = point.recordedAt;
+        sessionRow.updatedAt = new Date().toISOString();
+      }
+    });
+
+    writeDemoStore(store);
+    notifyDemoTable('routePoints');
+    notifyDemoTable('routeSessions');
+    return inserted;
+  }
+
+  const client = ensureAuthenticatedClient();
+  const payload = points.map((point) => ({
+    id: point.id,
+    session_id: point.sessionId,
+    employee_id: point.employeeId,
+    recorded_at: point.recordedAt,
+    lat: point.lat,
+    lng: point.lng,
+    accuracy_m: point.accuracyM ?? null,
+    speed_mps: point.speedMps ?? null,
+    heading: point.heading ?? null,
+  }));
+
+  const { data, error } = await client
+    .from('route_points')
+    .insert(payload)
+    .select('id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at');
+
+  if (error?.code === '23505') {
+    return [];
+  }
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map(mapRoutePoint);
+}
+
+export async function finishRouteSession({ sessionId, endReadingId, endedAt, totalDistanceM }) {
+  if (isDemoMode) {
+    const store = readDemoStore();
+    const index = store.routeSessions.findIndex((row) => row.id === sessionId);
+
+    if (index === -1) {
+      return null;
+    }
+
+    const before = { ...store.routeSessions[index] };
+    store.routeSessions[index] = {
+      ...store.routeSessions[index],
+      endReadingId,
+      status: 'completed',
+      endedAt: endedAt ?? new Date().toISOString(),
+      totalDistanceM: Math.max(0, Math.round(Number(totalDistanceM) || 0)),
+      updatedAt: new Date().toISOString(),
+    };
+    appendDemoAudit(store, 'route.complete', 'route_session', sessionId, before, store.routeSessions[index]);
+    writeDemoStore(store);
+    notifyDemoTable('routeSessions');
+    return store.routeSessions[index];
+  }
+
+  const client = ensureAuthenticatedClient();
+  const { data, error } = await client
+    .from('route_sessions')
+    .update({
+      end_reading_id: endReadingId,
+      status: 'completed',
+      ended_at: endedAt ?? new Date().toISOString(),
+      total_distance_m: Math.max(0, Math.round(Number(totalDistanceM) || 0)),
+    })
+    .eq('id', sessionId)
+    .select('id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapRouteSession(data);
 }
 
 export async function saveConfig(config) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fleetline-v3';
+const CACHE_NAME = 'fleetline-v4';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -34,7 +34,8 @@ self.addEventListener('fetch', (event) => {
     url.hostname.endsWith('.supabase.co') ||
     url.hostname.endsWith('.supabase.in') ||
     url.hostname === 'supabase.co' ||
-    url.hostname === 'supabase.in'
+    url.hostname === 'supabase.in' ||
+    url.hostname.endsWith('openstreetmap.org')
   ) {
     return;
   }

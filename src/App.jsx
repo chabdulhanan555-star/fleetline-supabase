@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
+import maplibregl from 'maplibre-gl';
 import {
   ArrowLeft,
   BarChart3,
@@ -18,10 +19,12 @@ import {
   KeyRound,
   Loader2,
   LogOut,
+  MapPin,
   MessageCircle,
   PackageCheck,
   Phone,
   RefreshCw,
+  Route,
   Settings,
   Shield,
   Moon,
@@ -37,8 +40,10 @@ import {
 import { enqueue, flushOutbox, onOutboxChange } from './lib/outbox.js';
 import {
   adminLogin,
+  appendRoutePoints,
   deleteEmployee,
   deleteReading,
+  finishRouteSession,
   getCurrentSession,
   getSignedPhotoUrl,
   inviteAdmin,
@@ -46,6 +51,7 @@ import {
   isSupabaseConfigured,
   listAdmins,
   listAuditLog,
+  listRoutePointsForSession,
   onSessionChange,
   resetRiderPin,
   riderLogin,
@@ -56,7 +62,10 @@ import {
   subscribeConfig,
   subscribeEmployees,
   subscribeReadings,
+  subscribeRoutePoints,
+  subscribeRouteSessions,
   supabaseConfigError,
+  startRouteSession,
   uploadPhoto,
 } from './lib/supabase.js';
 
@@ -91,6 +100,34 @@ const MISSING_READING_CUTOFFS = {
   morning: { hour: 11, label: '11:00 AM' },
   evening: { hour: 18, label: '6:00 PM' },
 };
+const ROUTE_TRACKING_KEY = 'fleetline.active-route-session.v1';
+const ROUTE_SAMPLE_INTERVAL_MS = 60000;
+const ROUTE_MIN_DISTANCE_M = 75;
+const ROUTE_STALE_AFTER_MS = 30 * 60 * 1000;
+const ROUTE_MAP_STYLE = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: 'OpenStreetMap contributors',
+    },
+  },
+  layers: [
+    {
+      id: 'osm',
+      type: 'raster',
+      source: 'osm',
+      paint: {
+        'raster-saturation': -0.55,
+        'raster-contrast': 0.18,
+        'raster-brightness-min': 0.08,
+        'raster-brightness-max': 0.72,
+      },
+    },
+  ],
+};
 
 const getAppDateTime = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -118,6 +155,79 @@ const fmtDate = (value) =>
 const fmtShort = (value) =>
   new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 const fmtNum = (value) => Number(value ?? 0).toLocaleString('en-US');
+const fmtDistance = (meters) => {
+  const value = Number(meters) || 0;
+  return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${Math.round(value)} m`;
+};
+
+const toRadians = (value) => (Number(value) * Math.PI) / 180;
+
+const distanceMeters = (left, right) => {
+  if (!left || !right) return 0;
+  const earthRadiusM = 6371000;
+  const dLat = toRadians(right.lat - left.lat);
+  const dLng = toRadians(right.lng - left.lng);
+  const lat1 = toRadians(left.lat);
+  const lat2 = toRadians(right.lat);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadiusM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const sortRoutePoints = (points) =>
+  [...points].sort((left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime());
+
+const calculateRouteDistanceM = (points) =>
+  sortRoutePoints(points).reduce((total, point, index, rows) => {
+    if (index === 0) return total;
+    return total + distanceMeters(rows[index - 1], point);
+  }, 0);
+
+const groupRoutePointsBySession = (points) =>
+  points.reduce((accumulator, point) => {
+    accumulator[point.sessionId] ??= [];
+    accumulator[point.sessionId].push(point);
+    return accumulator;
+  }, {});
+
+const readStoredActiveRoute = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(ROUTE_TRACKING_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredActiveRoute = (route) => {
+  if (typeof window === 'undefined') return;
+  if (!route) {
+    window.localStorage.removeItem(ROUTE_TRACKING_KEY);
+    return;
+  }
+  window.localStorage.setItem(ROUTE_TRACKING_KEY, JSON.stringify(route));
+};
+
+const pointFromPosition = (position, session) => ({
+  id: crypto.randomUUID(),
+  sessionId: session.id,
+  employeeId: session.employeeId,
+  recordedAt: new Date(position.timestamp || Date.now()).toISOString(),
+  lat: Number(position.coords.latitude),
+  lng: Number(position.coords.longitude),
+  accuracyM: position.coords.accuracy ?? null,
+  speedMps: position.coords.speed ?? null,
+  heading: position.coords.heading ?? null,
+});
+
+const shouldRecordRoutePoint = (lastPoint, nextPoint) => {
+  if (!lastPoint) return true;
+  const movedM = distanceMeters(lastPoint, nextPoint);
+  const elapsedMs = new Date(nextPoint.recordedAt).getTime() - new Date(lastPoint.recordedAt).getTime();
+  return movedM >= ROUTE_MIN_DISTANCE_M || elapsedMs >= ROUTE_SAMPLE_INTERVAL_MS;
+};
 
 const isLikelyNetworkError = (error) => {
   const text = String(error?.message ?? error ?? '').toLowerCase();
@@ -612,6 +722,25 @@ const ThemeStyles = () => (
       border-radius: inherit;
       box-shadow: 0 0 18px rgba(217,119,6,0.34), inset 0 1px 0 rgba(255,253,247,0.35);
     }
+    .route-map-3d {
+      transform-style: preserve-3d;
+      box-shadow:
+        0 28px 80px rgba(0,0,0,0.46),
+        0 9px 0 rgba(0,0,0,0.24),
+        inset 0 1px 0 rgba(255,253,247,0.1);
+    }
+    .route-map-3d .maplibregl-canvas {
+      filter: saturate(0.9) contrast(1.05);
+    }
+    .route-map-3d .maplibregl-ctrl-attrib {
+      background: rgba(5, 8, 12, 0.78);
+      color: rgba(255, 253, 247, 0.58);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+    }
+    .route-map-3d .maplibregl-ctrl-attrib a {
+      color: #f59e0b;
+    }
     .table-3d {
       border-radius: 18px;
       box-shadow: 0 24px 48px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,253,247,0.08);
@@ -757,6 +886,205 @@ const BarChart = ({ rows, valueLabel = (value) => fmtNum(Math.round(value)), emp
         );
       })}
     </div>
+  );
+};
+
+const buildRouteLineData = (points) => ({
+  type: 'FeatureCollection',
+  features: points.length > 1
+    ? [
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: points.map((point) => [point.lng, point.lat]),
+          },
+        },
+      ]
+    : [],
+});
+
+const buildRoutePointData = (points) => ({
+  type: 'FeatureCollection',
+  features: points.map((point, index) => ({
+    type: 'Feature',
+    properties: {
+      kind: index === 0 ? 'start' : index === points.length - 1 ? 'live' : 'point',
+    },
+    geometry: {
+      type: 'Point',
+      coordinates: [point.lng, point.lat],
+    },
+  })),
+});
+
+const updateRouteMapData = (map, points) => {
+  const lineSource = map.getSource('route-line');
+  const pointSource = map.getSource('route-points');
+  if (!lineSource || !pointSource) return;
+
+  lineSource.setData(buildRouteLineData(points));
+  pointSource.setData(buildRoutePointData(points));
+
+  if (points.length === 1) {
+    map.easeTo({ center: [points[0].lng, points[0].lat], zoom: 15, pitch: 60, bearing: -22, duration: 600 });
+    return;
+  }
+
+  if (points.length > 1) {
+    const bounds = new maplibregl.LngLatBounds();
+    points.forEach((point) => bounds.extend([point.lng, point.lat]));
+    map.fitBounds(bounds, { padding: 44, maxZoom: 16, duration: 700 });
+  }
+};
+
+const RouteMap = ({ points, session, employee }) => {
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const routePoints = useMemo(() => sortRoutePoints(points), [points]);
+  const routeDistance = session?.totalDistanceM || calculateRouteDistanceM(routePoints);
+  const lastPoint = routePoints.at(-1);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return undefined;
+
+    const initialPoint = routePoints[0];
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: ROUTE_MAP_STYLE,
+      center: initialPoint ? [initialPoint.lng, initialPoint.lat] : [74.3587, 31.5204],
+      zoom: initialPoint ? 15 : 10,
+      pitch: 60,
+      bearing: -22,
+      attributionControl: false,
+    });
+
+    mapRef.current = map;
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+
+    map.on('load', () => {
+      map.addSource('route-line', {
+        type: 'geojson',
+        data: buildRouteLineData([]),
+      });
+      map.addSource('route-points', {
+        type: 'geojson',
+        data: buildRoutePointData([]),
+      });
+      map.addLayer({
+        id: 'route-line-glow',
+        type: 'line',
+        source: 'route-line',
+        paint: {
+          'line-color': '#f59e0b',
+          'line-width': 11,
+          'line-opacity': 0.24,
+          'line-blur': 5,
+        },
+      });
+      map.addLayer({
+        id: 'route-line-main',
+        type: 'line',
+        source: 'route-line',
+        paint: {
+          'line-color': '#d97706',
+          'line-width': 5,
+          'line-opacity': 0.95,
+        },
+      });
+      map.addLayer({
+        id: 'route-points',
+        type: 'circle',
+        source: 'route-points',
+        paint: {
+          'circle-radius': ['case', ['==', ['get', 'kind'], 'live'], 8, ['==', ['get', 'kind'], 'start'], 7, 4],
+          'circle-color': ['case', ['==', ['get', 'kind'], 'start'], '#22c55e', ['==', ['get', 'kind'], 'live'], '#ef4444', '#f59e0b'],
+          'circle-stroke-color': '#fffdf7',
+          'circle-stroke-width': 2,
+        },
+      });
+      updateRouteMapData(map, routePoints);
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded() || !map.getSource('route-line')) return;
+    updateRouteMapData(map, routePoints);
+  }, [routePoints]);
+
+  return (
+    <div className="route-map-3d surface-3d relative overflow-hidden border border-orange-500/30 bg-zinc-950">
+      <div ref={containerRef} className="h-[360px] w-full" />
+      {routePoints.length === 0 ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-8 text-center">
+          <div>
+            <MapPin className="mx-auto mb-3 h-10 w-10 text-zinc-600" />
+            <div className="font-display text-2xl text-white">No GPS Points Yet</div>
+            <div className="mt-1 text-sm text-zinc-500">The route line appears as soon as the rider sends location points.</div>
+          </div>
+        </div>
+      ) : null}
+      <div className="pointer-events-none absolute left-3 right-3 top-3 flex flex-wrap gap-2">
+        <div className="mini-surface-3d border border-orange-500/30 bg-black/80 px-3 py-2">
+          <div className="font-mono text-[9px] uppercase text-zinc-500">Rider</div>
+          <div className="font-display text-xl leading-none text-white">{employee?.name || 'Route'}</div>
+        </div>
+        <div className="mini-surface-3d border border-amber-400/30 bg-black/80 px-3 py-2">
+          <div className="font-mono text-[9px] uppercase text-zinc-500">GPS Distance</div>
+          <div className="font-display text-xl leading-none text-amber-400">{fmtDistance(routeDistance)}</div>
+        </div>
+        <div className="mini-surface-3d border border-zinc-700 bg-black/80 px-3 py-2">
+          <div className="font-mono text-[9px] uppercase text-zinc-500">Points</div>
+          <div className="font-display text-xl leading-none text-white">{routePoints.length}</div>
+        </div>
+      </div>
+      {lastPoint ? (
+        <div className="pointer-events-none absolute bottom-3 left-3 right-3 mini-surface-3d border border-zinc-700 bg-black/85 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400">
+          Last GPS: {new Date(lastPoint.recordedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+          {lastPoint.accuracyM ? ` | Accuracy ${Math.round(lastPoint.accuracyM)}m` : ''}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const RouteSessionCard = ({ session, employee, points, selected, onSelect }) => {
+  const stale = session.status === 'active' && (!session.lastPointAt || Date.now() - new Date(session.lastPointAt).getTime() > ROUTE_STALE_AFTER_MS);
+  const distance = session.totalDistanceM || calculateRouteDistanceM(points);
+  const tone = session.status === 'active' ? (stale ? 'amber' : 'green') : 'zinc';
+
+  return (
+    <button
+      onClick={onSelect}
+      className={`surface-3d lift-3d w-full border p-3 text-left transition-colors ${
+        selected ? 'border-orange-500 bg-orange-500/10' : 'border-zinc-800 bg-zinc-950 hover:border-orange-500/50'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`flex h-10 w-10 items-center justify-center border ${statusClasses[tone]}`}>
+          <Route className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-semibold text-white">{employee?.name || 'Unknown rider'}</div>
+          <div className="font-mono text-[10px] uppercase text-zinc-500">
+            {fmtDate(session.date)} | {session.status}
+          </div>
+          <div className="mt-1 font-mono text-[9px] uppercase text-zinc-600">
+            {points.length} points | {fmtDistance(distance)}
+          </div>
+        </div>
+        {session.status === 'active' ? (
+          <div className={`h-2.5 w-2.5 rounded-full ${stale ? 'bg-amber-400' : 'bg-green-400 pulse-dot'}`} />
+        ) : null}
+      </div>
+    </button>
   );
 };
 
@@ -1476,6 +1804,108 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
   );
 };
 
+const AdminRoutesPanel = ({ employees, routeSessions, routePoints, onLoadRoutePoints }) => {
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
+  const rows = useMemo(
+    () =>
+      [...routeSessions].sort(
+        (left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime(),
+      ),
+    [routeSessions],
+  );
+  const selectedSession = rows.find((session) => session.id === selectedSessionId) ?? rows[0] ?? null;
+  const selectedEmployee = selectedSession
+    ? employees.find((employee) => employee.id === selectedSession.employeeId)
+    : null;
+  const selectedPoints = selectedSession ? pointsBySession[selectedSession.id] || [] : [];
+  const activeRoutes = rows.filter((session) => session.status === 'active');
+  const todayRoutes = rows.filter((session) => session.date === today());
+  const staleRoutes = activeRoutes.filter(
+    (session) => !session.lastPointAt || Date.now() - new Date(session.lastPointAt).getTime() > ROUTE_STALE_AFTER_MS,
+  );
+
+  useEffect(() => {
+    if (!selectedSessionId && rows[0]) {
+      setSelectedSessionId(rows[0].id);
+    }
+  }, [rows, selectedSessionId]);
+
+  useEffect(() => {
+    if (selectedSession?.id) {
+      onLoadRoutePoints?.(selectedSession.id);
+    }
+  }, [selectedSession?.id]);
+
+  return (
+    <div className="dashboard-3d space-y-4 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Live Route Control</div>
+          <div className="font-display text-3xl leading-none text-white">Route Map</div>
+          <div className="mt-1 text-xs text-zinc-500">Routes start after Morning Start and close after Evening End.</div>
+        </div>
+        <Route className="h-7 w-7 text-orange-500" />
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <StatCard label="Active Now" value={activeRoutes.length} unit="routes" icon={Route} accent="orange" />
+        <StatCard label="Today" value={todayRoutes.length} unit="sessions" icon={MapPin} accent="gold" />
+        <StatCard label="No GPS" value={staleRoutes.length} unit="alerts" icon={CloudOff} accent={staleRoutes.length ? 'gold' : 'white'} />
+      </div>
+
+      {staleRoutes.length > 0 ? (
+        <div className="surface-3d border border-amber-400/30 bg-amber-500/10 p-4">
+          <div className="font-display text-2xl text-white">GPS Attention</div>
+          <div className="mt-1 text-sm text-amber-200">
+            {staleRoutes.length} active route{staleRoutes.length === 1 ? '' : 's'} has no recent GPS point. The rider may have denied permission, closed Chrome, or lost signal.
+          </div>
+        </div>
+      ) : null}
+
+      {selectedSession ? (
+        <RouteMap
+          session={selectedSession}
+          employee={selectedEmployee}
+          points={selectedPoints}
+        />
+      ) : (
+        <div className="surface-3d border border-dashed border-zinc-800 p-10 text-center">
+          <Route className="mx-auto mb-3 h-12 w-12 text-zinc-700" />
+          <div className="font-display text-2xl text-white">No Routes Yet</div>
+          <div className="mt-1 text-sm text-zinc-500">Ask a rider to submit Morning Start with location permission allowed.</div>
+        </div>
+      )}
+
+      <div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Route Sessions</div>
+        {rows.length === 0 ? (
+          <div className="surface-3d border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+            No route sessions have been recorded yet.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {rows.slice(0, 30).map((session) => {
+              const employee = employees.find((row) => row.id === session.employeeId);
+              const points = pointsBySession[session.id] || [];
+              return (
+                <RouteSessionCard
+                  key={session.id}
+                  session={session}
+                  employee={employee}
+                  points={points}
+                  selected={selectedSession?.id === session.id}
+                  onSelect={() => setSelectedSessionId(session.id)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -1873,10 +2303,77 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
   </div>
 );
 
+const EmployeeRouteHistory = ({ employee, routeSessions = [], routePoints = [], selectedMonth, onLoadRoutePoints }) => {
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
+  const rows = useMemo(
+    () =>
+      routeSessions
+        .filter((session) => session.employeeId === employee.id && monthKey(session.date) === selectedMonth)
+        .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime()),
+    [employee.id, routeSessions, selectedMonth],
+  );
+  const selectedSession = rows.find((session) => session.id === selectedSessionId) ?? rows[0] ?? null;
+  const selectedPoints = selectedSession ? pointsBySession[selectedSession.id] || [] : [];
+
+  useEffect(() => {
+    if (!rows.some((row) => row.id === selectedSessionId)) {
+      setSelectedSessionId(rows[0]?.id ?? null);
+    }
+  }, [rows, selectedSessionId]);
+
+  useEffect(() => {
+    if (selectedSession?.id) {
+      onLoadRoutePoints?.(selectedSession.id);
+    }
+  }, [selectedSession?.id]);
+
+  return (
+    <div>
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// GPS Route Proof</div>
+      {rows.length === 0 ? (
+        <div className="surface-3d border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+          No GPS route recorded for this month.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
+            {rows.map((session) => {
+              const points = pointsBySession[session.id] || [];
+              return (
+                <button
+                  key={session.id}
+                  onClick={() => setSelectedSessionId(session.id)}
+                  className={`mini-surface-3d whitespace-nowrap border px-3 py-2 text-left ${
+                    selectedSession?.id === session.id
+                      ? 'border-orange-500 bg-orange-500/10 text-orange-500'
+                      : 'border-zinc-800 bg-zinc-950 text-zinc-400'
+                  }`}
+                >
+                  <div className="font-display text-lg leading-none">{fmtShort(session.date)}</div>
+                  <div className="font-mono text-[9px] uppercase">
+                    {session.status} | {points.length} points
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {selectedSession ? (
+            <RouteMap session={selectedSession} employee={employee} points={selectedPoints} />
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const EmployeeDetailView = ({
   employee,
   readings,
   config,
+  routeSessions,
+  routePoints,
+  onLoadRoutePoints,
   onBack,
   onUpdateEmployee,
   onDeleteEmployee,
@@ -1975,6 +2472,14 @@ const EmployeeDetailView = ({
             </button>
           </div>
         ) : null}
+
+        <EmployeeRouteHistory
+          employee={employee}
+          routeSessions={routeSessions}
+          routePoints={routePoints}
+          selectedMonth={selectedMonth}
+          onLoadRoutePoints={onLoadRoutePoints}
+        />
 
         <div>
           <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Reading History</div>
@@ -2079,8 +2584,10 @@ const RiderSubmitView = ({
   readings,
   config,
   queuedCount,
+  queuedRouteCount,
   failedCount,
   syncingCount,
+  routeTracking,
   onRetrySync,
   onSubmit,
   onShareWhatsApp,
@@ -2109,6 +2616,17 @@ const RiderSubmitView = ({
   const projectedDistance = projectedRawDistance === null ? 0 : Math.max(0, projectedRawDistance);
   const projectedFuel = mileage > 0 ? projectedDistance / mileage : 0;
   const projectedCost = projectedFuel * fuelPrice;
+  const routeStatus = routeTracking?.status ?? 'idle';
+  const routeTone =
+    routeStatus === 'active'
+      ? 'green'
+      : routeStatus === 'requesting'
+        ? 'amber'
+        : routeStatus === 'error'
+          ? 'red'
+          : routeStatus === 'completed'
+            ? 'zinc'
+            : 'amber';
   const canSubmit =
     Boolean(photoFile) &&
     Boolean(reading) &&
@@ -2199,18 +2717,59 @@ const RiderSubmitView = ({
         )}
       </div>
 
-      {queuedCount > 0 ? (
+      <div className={`surface-3d border p-4 ${statusClasses[routeTone]}`}>
+        <div className="flex items-start gap-3">
+          <div className={`flex h-10 w-10 items-center justify-center border ${statusClasses[routeTone]}`}>
+            <MapPin className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-2xl leading-none text-white">
+              {routeStatus === 'active'
+                ? 'Route Tracking Active'
+                : routeStatus === 'requesting'
+                  ? 'Allow Location'
+                  : routeStatus === 'completed'
+                    ? 'Route Closed'
+                    : 'GPS Route Proof'}
+            </div>
+            <div className="mt-1 text-xs text-zinc-400">
+              Morning Start begins GPS proof automatically. Keep this Chrome tab open during market work for live tracking.
+            </div>
+            {routeTracking?.message ? (
+              <div className="mt-2 font-mono text-[10px] uppercase tracking-widest">
+                {routeTracking.message}
+              </div>
+            ) : null}
+            <div className="mt-3 grid grid-cols-3 gap-2 font-mono text-[9px] uppercase text-zinc-500">
+              <div>
+                Points
+                <div className="font-display text-xl text-white">{routeTracking?.pointCount ?? 0}</div>
+              </div>
+              <div>
+                GPS
+                <div className="font-display text-xl text-amber-400">{fmtDistance(routeTracking?.totalDistanceM ?? 0)}</div>
+              </div>
+              <div>
+                Queued
+                <div className="font-display text-xl text-orange-500">{queuedRouteCount ?? 0}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {queuedCount > 0 || queuedRouteCount > 0 ? (
         <div className={`surface-3d border p-4 ${failedCount > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
           <div className="mb-1 flex items-center gap-2">
             <CloudOff className={`h-4 w-4 ${failedCount > 0 ? 'text-red-300' : 'text-amber-400'}`} />
             <div className={`font-mono text-[10px] uppercase tracking-widest ${failedCount > 0 ? 'text-red-200' : 'text-amber-300'}`}>
               {failedCount > 0
                 ? `${failedCount} failed | ${queuedCount - failedCount} waiting`
-                : `${queuedCount} queued${syncingCount > 0 ? ` | ${syncingCount} syncing` : ' | will sync on reconnect'}`}
+                : `${queuedCount} readings | ${queuedRouteCount ?? 0} GPS items${syncingCount > 0 ? ` | ${syncingCount} syncing` : ' | will sync on reconnect'}`}
             </div>
           </div>
-          <div className="text-xs text-zinc-400">Queued readings stay on this device until they upload successfully.</div>
-          {failedCount > 0 ? (
+          <div className="text-xs text-zinc-400">Queued readings and GPS points stay on this device until they upload successfully.</div>
+          {failedCount > 0 || queuedRouteCount > 0 ? (
             <button
               onClick={onRetrySync}
               className="mt-3 border border-red-400/50 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-red-200"
@@ -2490,6 +3049,8 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [readings, setReadings] = useState([]);
+  const [routeSessions, setRouteSessions] = useState([]);
+  const [routePoints, setRoutePoints] = useState([]);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [queuedItems, setQueuedItems] = useState([]);
   const [admins, setAdmins] = useState([]);
@@ -2504,7 +3065,18 @@ export default function App() {
   const [photoModal, setPhotoModal] = useState({ open: false, url: '', path: '' });
   const [resetPinEmployee, setResetPinEmployee] = useState(null);
   const [resetPinBusy, setResetPinBusy] = useState(false);
+  const [routeTracking, setRouteTracking] = useState({
+    status: 'idle',
+    sessionId: null,
+    message: '',
+    pointCount: 0,
+    lastPointAt: null,
+    totalDistanceM: 0,
+  });
   const [toast, setToast] = useState(null);
+  const routeWatchRef = useRef(null);
+  const activeRouteRef = useRef(null);
+  const lastRoutePointRef = useRef(null);
 
   useEffect(() => {
     const timeout = toast ? window.setTimeout(() => setToast(null), 2600) : null;
@@ -2543,6 +3115,8 @@ export default function App() {
     if (!session) {
       setEmployees([]);
       setReadings([]);
+      setRouteSessions([]);
+      setRoutePoints([]);
       setConfig(DEFAULT_CONFIG);
       return undefined;
     }
@@ -2550,11 +3124,27 @@ export default function App() {
     const unsubscribeEmployees = subscribeEmployees((rows) => setEmployees(rows));
     const unsubscribeReadings = subscribeReadings((rows) => setReadings(rows));
     const unsubscribeConfig = subscribeConfig((row) => setConfig(row));
+    const unsubscribeRouteSessions = session.role === 'admin'
+      ? subscribeRouteSessions((rows) => setRouteSessions(rows))
+      : null;
+    const unsubscribeRoutePoints = session.role === 'admin'
+      ? subscribeRoutePoints((rows) => {
+          setRoutePoints((current) => {
+            const byId = new Map(current.map((point) => [point.id, point]));
+            rows.forEach((point) => byId.set(point.id, point));
+            return [...byId.values()].sort(
+              (left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime(),
+            );
+          });
+        })
+      : null;
 
     return () => {
       unsubscribeEmployees?.();
       unsubscribeReadings?.();
       unsubscribeConfig?.();
+      unsubscribeRouteSessions?.();
+      unsubscribeRoutePoints?.();
     };
   }, [session]);
 
@@ -2592,6 +3182,247 @@ export default function App() {
 
   const showToast = (message, tone = 'info') => setToast({ message, tone });
 
+  const syncRouteTrackingState = (route, status = 'active', message = '') => {
+    setRouteTracking({
+      status,
+      sessionId: route?.id ?? null,
+      message,
+      pointCount: route?.pointCount ?? 0,
+      lastPointAt: route?.lastPointAt ?? null,
+      totalDistanceM: route?.totalDistanceM ?? 0,
+    });
+  };
+
+  const updateActiveRoute = (patch) => {
+    if (!activeRouteRef.current) return null;
+    const nextRoute = {
+      ...activeRouteRef.current,
+      ...patch,
+    };
+    activeRouteRef.current = nextRoute;
+    writeStoredActiveRoute(nextRoute);
+    syncRouteTrackingState(nextRoute, 'active', 'Route tracking active.');
+    return nextRoute;
+  };
+
+  const stopRouteWatch = () => {
+    if (routeWatchRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(routeWatchRef.current);
+    }
+    routeWatchRef.current = null;
+  };
+
+  const getCurrentPosition = () =>
+    new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Location is not available on this device.'));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 15000,
+      });
+    });
+
+  const queueOrSaveRouteStart = async (route) => {
+    if (!navigator.onLine) {
+      await enqueue({ id: `route-start-${route.id}`, op: 'route.start', payload: { route } });
+      return route;
+    }
+
+    try {
+      return await startRouteSession(route);
+    } catch (error) {
+      if (isLikelyNetworkError(error)) {
+        await enqueue({ id: `route-start-${route.id}`, op: 'route.start', payload: { route } });
+        return route;
+      }
+      throw error;
+    }
+  };
+
+  const queueOrSaveRoutePoints = async (points) => {
+    if (!points.length) return;
+
+    if (!navigator.onLine) {
+      await Promise.all(points.map((point) =>
+        enqueue({ id: `route-point-${point.id}`, op: 'route.point', payload: { point } }),
+      ));
+      return;
+    }
+
+    try {
+      await appendRoutePoints(points);
+    } catch (error) {
+      if (!isLikelyNetworkError(error)) {
+        throw error;
+      }
+      await Promise.all(points.map((point) =>
+        enqueue({ id: `route-point-${point.id}`, op: 'route.point', payload: { point } }),
+      ));
+    }
+  };
+
+  const queueOrSaveRouteFinish = async (payload) => {
+    if (!navigator.onLine) {
+      await enqueue({ id: `route-finish-${payload.sessionId}`, op: 'route.finish', payload });
+      return;
+    }
+
+    try {
+      await finishRouteSession(payload);
+    } catch (error) {
+      if (!isLikelyNetworkError(error)) {
+        throw error;
+      }
+      await enqueue({ id: `route-finish-${payload.sessionId}`, op: 'route.finish', payload });
+    }
+  };
+
+  const recordRoutePoint = async (point) => {
+    const previousPoint = lastRoutePointRef.current;
+    const distanceDelta = previousPoint ? distanceMeters(previousPoint, point) : 0;
+    lastRoutePointRef.current = point;
+    const nextRoute = updateActiveRoute({
+      lastPoint: point,
+      lastPointAt: point.recordedAt,
+      pointCount: (activeRouteRef.current?.pointCount ?? 0) + 1,
+      totalDistanceM: (activeRouteRef.current?.totalDistanceM ?? 0) + distanceDelta,
+    });
+
+    try {
+      await queueOrSaveRoutePoints([point]);
+    } catch (error) {
+      console.error(error);
+      syncRouteTrackingState(nextRoute, 'error', error.message || 'Failed to save GPS point.');
+    }
+  };
+
+  const startRouteWatcher = (route) => {
+    if (!navigator.geolocation || routeWatchRef.current !== null) return;
+
+    routeWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const nextPoint = pointFromPosition(position, route);
+        if (!shouldRecordRoutePoint(lastRoutePointRef.current, nextPoint)) return;
+        recordRoutePoint(nextPoint);
+      },
+      (error) => {
+        console.error(error);
+        setRouteTracking((current) => ({
+          ...current,
+          status: 'error',
+          message: error.message || 'Location permission or GPS signal is unavailable.',
+        }));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 25000,
+        maximumAge: 15000,
+      },
+    );
+  };
+
+  const startRouteTrackingAfterMorning = async ({ employee, readingId, date }) => {
+    if (!employee?.id || !navigator.geolocation) {
+      syncRouteTrackingState(null, 'unsupported', 'Location tracking is not available on this device.');
+      return;
+    }
+
+    const existingRoute = activeRouteRef.current ?? readStoredActiveRoute();
+    if (existingRoute?.employeeId === employee.id && existingRoute?.date === date && existingRoute?.status === 'active') {
+      activeRouteRef.current = existingRoute;
+      lastRoutePointRef.current = existingRoute.lastPoint ?? null;
+      syncRouteTrackingState(existingRoute, 'active', 'Route tracking already active.');
+      startRouteWatcher(existingRoute);
+      return;
+    }
+
+    setRouteTracking((current) => ({
+      ...current,
+      status: 'requesting',
+      message: 'Waiting for Android Chrome location permission.',
+    }));
+
+    try {
+      const firstPosition = await getCurrentPosition();
+      const route = {
+        id: crypto.randomUUID(),
+        employeeId: employee.id,
+        date,
+        startReadingId: readingId,
+        startedAt: new Date().toISOString(),
+        status: 'active',
+        pointCount: 0,
+        totalDistanceM: 0,
+        lastPointAt: null,
+      };
+
+      const savedRoute = await queueOrSaveRouteStart(route);
+      const activeRoute = {
+        ...route,
+        ...savedRoute,
+        status: 'active',
+      };
+      activeRouteRef.current = activeRoute;
+      writeStoredActiveRoute(activeRoute);
+      syncRouteTrackingState(activeRoute, 'active', 'Route tracking active.');
+
+      const firstPoint = pointFromPosition(firstPosition, activeRoute);
+      await recordRoutePoint(firstPoint);
+      startRouteWatcher(activeRoute);
+      showToast('Route tracking started.', 'success');
+    } catch (error) {
+      console.error(error);
+      setRouteTracking({
+        status: 'error',
+        sessionId: null,
+        message: 'Location permission was not allowed. Odometer reading is saved; route proof is missing.',
+        pointCount: 0,
+        lastPointAt: null,
+        totalDistanceM: 0,
+      });
+      showToast('Reading saved, but location tracking was not allowed.', 'info');
+    }
+  };
+
+  const finishRouteTrackingAfterEvening = async ({ employee, readingId, date }) => {
+    const activeRoute = activeRouteRef.current ?? readStoredActiveRoute();
+    if (!activeRoute || activeRoute.employeeId !== employee?.id || activeRoute.date !== date) {
+      return;
+    }
+
+    stopRouteWatch();
+    const payload = {
+      sessionId: activeRoute.id,
+      employeeId: activeRoute.employeeId,
+      endReadingId: readingId,
+      endedAt: new Date().toISOString(),
+      totalDistanceM: activeRoute.totalDistanceM ?? 0,
+    };
+
+    try {
+      await queueOrSaveRouteFinish(payload);
+      writeStoredActiveRoute(null);
+      activeRouteRef.current = null;
+      lastRoutePointRef.current = null;
+      setRouteTracking({
+        status: 'completed',
+        sessionId: payload.sessionId,
+        message: 'Route closed after Evening End.',
+        pointCount: activeRoute.pointCount ?? 0,
+        lastPointAt: activeRoute.lastPointAt ?? null,
+        totalDistanceM: payload.totalDistanceM,
+      });
+      showToast('Route tracking closed.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Failed to close route session.', 'error');
+    }
+  };
+
   const refreshAdmins = async () => {
     setAdmins(await listAdmins());
   };
@@ -2600,6 +3431,24 @@ export default function App() {
     const result = await listAuditLog({ page, pageSize: 20 });
     setAuditRows(result.rows);
     setAuditCount(result.count);
+  };
+
+  const loadRoutePointsForSession = async (sessionId) => {
+    if (!sessionId || session?.role !== 'admin') return;
+
+    try {
+      const rows = await listRoutePointsForSession(sessionId);
+      setRoutePoints((current) => {
+        const byId = new Map(current.map((point) => [point.id, point]));
+        rows.forEach((point) => byId.set(point.id, point));
+        return [...byId.values()].sort(
+          (left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime(),
+        );
+      });
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Failed to load route points.', 'error');
+    }
   };
 
   const compressPhoto = async (file) =>
@@ -2611,30 +3460,47 @@ export default function App() {
       fileType: 'image/jpeg',
     });
 
-  const replayQueuedReading = async (item) => {
-    if (item.op !== 'reading.create') return;
+  const replayQueuedItem = async (item) => {
     const { payload } = item;
-    const photoPath = await uploadPhoto(payload.employeeId, payload.readingId, payload.photoBlob);
-    await saveReading({
-      id: payload.readingId,
-      employeeId: payload.employeeId,
-      date: payload.date,
-      km: payload.km,
-      readingType: payload.readingType ?? 'evening',
-      photoPath,
-      submittedAt: payload.submittedAt,
-    });
+
+    if (item.op === 'reading.create') {
+      const photoPath = await uploadPhoto(payload.employeeId, payload.readingId, payload.photoBlob);
+      await saveReading({
+        id: payload.readingId,
+        employeeId: payload.employeeId,
+        date: payload.date,
+        km: payload.km,
+        readingType: payload.readingType ?? 'evening',
+        photoPath,
+        submittedAt: payload.submittedAt,
+      });
+      return;
+    }
+
+    if (item.op === 'route.start') {
+      await startRouteSession(payload.route);
+      return;
+    }
+
+    if (item.op === 'route.point') {
+      await appendRoutePoints([payload.point]);
+      return;
+    }
+
+    if (item.op === 'route.finish') {
+      await finishRouteSession(payload);
+    }
   };
 
-  const flushQueuedReadings = async (includeFailed = false) => {
+  const flushQueuedItems = async (includeFailed = false) => {
     if (!navigator.onLine || session?.role !== 'rider') return;
-    await flushOutbox(replayQueuedReading, { includeFailed });
+    await flushOutbox(replayQueuedItem, { includeFailed });
   };
 
   useEffect(() => {
     const tryFlush = async () => {
       try {
-        await flushQueuedReadings(false);
+        await flushQueuedItems(false);
       } catch (error) {
         console.error(error);
       }
@@ -2651,6 +3517,25 @@ export default function App() {
     if (session?.role !== 'rider') return null;
     return employees.find((employee) => employee.id === session.employee.id) || session.employee;
   }, [employees, session]);
+
+  useEffect(() => {
+    if (session?.role !== 'rider' || !riderEmployee) {
+      stopRouteWatch();
+      return undefined;
+    }
+
+    const storedRoute = readStoredActiveRoute();
+    if (storedRoute?.employeeId === riderEmployee.id && storedRoute?.date === today() && storedRoute?.status === 'active') {
+      activeRouteRef.current = storedRoute;
+      lastRoutePointRef.current = storedRoute.lastPoint ?? null;
+      syncRouteTrackingState(storedRoute, 'active', 'Route tracking active.');
+      startRouteWatcher(storedRoute);
+    }
+
+    return () => {
+      stopRouteWatch();
+    };
+  }, [session?.role, riderEmployee?.id]);
 
   const riderQueuedReadings = useMemo(() => {
     if (!riderEmployee) return [];
@@ -2676,9 +3561,23 @@ export default function App() {
     return [...(readingsByEmployee[riderEmployee.id] || []), ...riderQueuedReadings];
   }, [readingsByEmployee, riderEmployee, riderQueuedReadings]);
 
+  const riderQueuedRouteItems = useMemo(() => {
+    if (!riderEmployee) return [];
+    return queuedItems.filter(
+      (item) =>
+        item.op?.startsWith('route.') &&
+        (
+          item.payload?.point?.employeeId === riderEmployee.id ||
+          item.payload?.route?.employeeId === riderEmployee.id ||
+          item.payload?.employeeId === riderEmployee.id
+        ),
+    );
+  }, [queuedItems, riderEmployee]);
+
   const queuedCount = riderQueuedReadings.length;
   const failedQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'failed').length;
   const syncingQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'syncing').length;
+  const queuedRouteCount = riderQueuedRouteItems.length;
 
   const handleAdminLogin = async (email, password) => {
     setAuthLoading(true);
@@ -2709,10 +3608,19 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    stopRouteWatch();
     await signOut();
     setSelectedEmployeeId(null);
     setAdminTab('overview');
     setRiderTab('today');
+    setRouteTracking({
+      status: 'idle',
+      sessionId: null,
+      message: '',
+      pointCount: 0,
+      lastPointAt: null,
+      totalDistanceM: 0,
+    });
   };
 
   const handleSaveEmployee = async (employee, options) => {
@@ -2820,6 +3728,11 @@ export default function App() {
 
     if (!navigator.onLine) {
       await enqueue({ id: readingId, op: 'reading.create', payload });
+      if (payload.readingType === 'morning') {
+        await startRouteTrackingAfterMorning({ employee, readingId, date });
+      } else if (payload.readingType === 'evening') {
+        await finishRouteTrackingAfterEvening({ employee, readingId, date });
+      }
       showToast('Offline: reading queued for sync.', 'info');
       return;
     }
@@ -2835,11 +3748,21 @@ export default function App() {
         photoPath,
         submittedAt: payload.submittedAt,
       });
-      await flushQueuedReadings(false);
+      if (payload.readingType === 'morning') {
+        await startRouteTrackingAfterMorning({ employee, readingId, date });
+      } else if (payload.readingType === 'evening') {
+        await finishRouteTrackingAfterEvening({ employee, readingId, date });
+      }
+      await flushQueuedItems(false);
       showToast('Reading submitted.', 'success');
     } catch (error) {
       if (isLikelyNetworkError(error)) {
         await enqueue({ id: readingId, op: 'reading.create', payload });
+        if (payload.readingType === 'morning') {
+          await startRouteTrackingAfterMorning({ employee, readingId, date });
+        } else if (payload.readingType === 'evening') {
+          await finishRouteTrackingAfterEvening({ employee, readingId, date });
+        }
         showToast('Network issue: reading queued for sync.', 'info');
         return;
       }
@@ -2885,6 +3808,9 @@ export default function App() {
             employee={selectedEmployee}
             readings={readingsByEmployee[selectedEmployee.id] || []}
             config={config}
+            routeSessions={routeSessions}
+            routePoints={routePoints}
+            onLoadRoutePoints={loadRoutePointsForSession}
             onBack={() => setSelectedEmployeeId(null)}
             onUpdateEmployee={handleSaveEmployee}
             onDeleteEmployee={handleDeleteEmployee}
@@ -2910,6 +3836,14 @@ export default function App() {
                 onResetPin={setResetPinEmployee}
               />
             ) : null}
+            {adminTab === 'routes' ? (
+              <AdminRoutesPanel
+                employees={employees}
+                routeSessions={routeSessions}
+                routePoints={routePoints}
+                onLoadRoutePoints={loadRoutePointsForSession}
+              />
+            ) : null}
             {adminTab === 'admins' ? <AdminsPanel admins={admins} onRefresh={refreshAdmins} onInvite={handleInviteAdmin} /> : null}
             {adminTab === 'audit' ? (
               <AuditPanel
@@ -2926,10 +3860,11 @@ export default function App() {
         )}
 
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-orange-500/20 bg-black/95 shadow-2xl backdrop-blur">
-          <div className="grid grid-cols-5">
+          <div className="grid grid-cols-6">
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 },
               { id: 'employees', label: 'Riders', icon: Users },
+              { id: 'routes', label: 'Routes', icon: Route },
               { id: 'admins', label: 'Admins', icon: Shield },
               { id: 'audit', label: 'Audit', icon: History },
               { id: 'settings', label: 'Settings', icon: Settings },
@@ -2982,9 +3917,11 @@ export default function App() {
           readings={riderReadings}
           config={config}
           queuedCount={queuedCount}
+          queuedRouteCount={queuedRouteCount}
           failedCount={failedQueuedCount}
           syncingCount={syncingQueuedCount}
-          onRetrySync={() => flushQueuedReadings(true)}
+          routeTracking={routeTracking}
+          onRetrySync={() => flushQueuedItems(true)}
           onSubmit={handleSubmitReading}
           onShareWhatsApp={(message) => openWhatsApp(config.adminWhatsApp, message)}
         />
