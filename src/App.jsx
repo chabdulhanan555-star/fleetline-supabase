@@ -475,6 +475,109 @@ const ThemeStyles = () => (
     .glow-orange {
       box-shadow: 0 0 24px -4px rgba(217,119,6,0.48), inset 0 1px 0 rgba(255,253,247,0.14);
     }
+    .dashboard-3d {
+      perspective: 1400px;
+      perspective-origin: 50% 0%;
+    }
+    .surface-3d {
+      position: relative;
+      isolation: isolate;
+      transform: translateZ(0);
+      transform-style: preserve-3d;
+      border-radius: 18px;
+      background:
+        linear-gradient(145deg, rgba(255,253,247,0.075), transparent 38%),
+        linear-gradient(155deg, rgba(23,32,42,0.98), rgba(8,12,17,0.98));
+      box-shadow:
+        0 26px 56px rgba(0,0,0,0.36),
+        0 7px 0 rgba(0,0,0,0.24),
+        inset 0 1px 0 rgba(255,253,247,0.13),
+        inset 0 -1px 0 rgba(0,0,0,0.45);
+      overflow: hidden;
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    }
+    .surface-3d::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(217,119,6,0.18), transparent 34%),
+        radial-gradient(circle at 96% 8%, rgba(15,118,110,0.12), transparent 30%);
+      opacity: 0.9;
+      pointer-events: none;
+    }
+    .surface-3d::after {
+      content: '';
+      position: absolute;
+      inset: 1px;
+      z-index: -1;
+      border-radius: 17px;
+      border: 1px solid rgba(255,253,247,0.06);
+      pointer-events: none;
+    }
+    .hero-3d {
+      background:
+        linear-gradient(135deg, rgba(217,119,6,0.28), rgba(234,179,8,0.11) 42%, rgba(15,118,110,0.13)),
+        linear-gradient(155deg, rgba(23,32,42,0.98), rgba(5,8,12,0.98));
+      box-shadow:
+        0 32px 68px rgba(0,0,0,0.42),
+        0 10px 0 rgba(52, 28, 7, 0.42),
+        inset 0 1px 0 rgba(255,253,247,0.16);
+    }
+    .surface-3d[class*="border-orange"],
+    .surface-3d[class*="border-amber"] {
+      background:
+        linear-gradient(145deg, rgba(217,119,6,0.16), transparent 42%),
+        linear-gradient(155deg, rgba(23,32,42,0.98), rgba(8,12,17,0.98));
+    }
+    .surface-3d[class*="border-red"] {
+      background:
+        linear-gradient(145deg, rgba(220,38,38,0.18), transparent 42%),
+        linear-gradient(155deg, rgba(23,32,42,0.98), rgba(8,12,17,0.98));
+    }
+    .surface-3d[class*="border-green"] {
+      background:
+        linear-gradient(145deg, rgba(21,128,61,0.16), transparent 42%),
+        linear-gradient(155deg, rgba(23,32,42,0.98), rgba(8,12,17,0.98));
+    }
+    .mini-surface-3d {
+      border-radius: 14px;
+      background: linear-gradient(145deg, rgba(255,253,247,0.08), rgba(5,8,12,0.56));
+      box-shadow: inset 0 1px 0 rgba(255,253,247,0.1), 0 12px 22px rgba(0,0,0,0.24);
+    }
+    .bar-track-3d {
+      border-radius: 999px;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.55);
+    }
+    .bar-fill-3d {
+      border-radius: inherit;
+      box-shadow: 0 0 18px rgba(217,119,6,0.34), inset 0 1px 0 rgba(255,253,247,0.35);
+    }
+    .table-3d {
+      border-radius: 18px;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,253,247,0.08);
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .lift-3d:hover,
+      .surface-3d:hover {
+        transform: translateY(-3px) rotateX(1.2deg);
+        box-shadow:
+          0 34px 68px rgba(0,0,0,0.42),
+          0 9px 0 rgba(0,0,0,0.22),
+          inset 0 1px 0 rgba(255,253,247,0.16);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .surface-3d,
+      .lift-3d {
+        transition: none;
+      }
+      .lift-3d:hover,
+      .surface-3d:hover {
+        transform: none;
+      }
+    }
     .bg-black\\/95, .bg-black\\/80, .bg-black\\/50, .bg-black\\/40 { backdrop-filter: blur(16px); }
     .border-zinc-800, .border-zinc-900 { border-color: var(--ops-border); }
     .shadow-2xl { box-shadow: 0 24px 60px rgba(0,0,0,0.38); }
@@ -552,7 +655,7 @@ const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
   const [textColor, borderColor] = colors[accent].split(' ');
 
   return (
-    <div className={`relative overflow-hidden border bg-zinc-950 p-4 ${borderColor}`}>
+    <div className={`surface-3d relative overflow-hidden border bg-zinc-950 p-4 ${borderColor}`}>
       <div className="absolute right-0 top-0 h-16 w-16 opacity-5">
         <Icon className={`h-full w-full ${textColor}`} />
       </div>
@@ -585,8 +688,8 @@ const BarChart = ({ rows, valueLabel = (value) => fmtNum(Math.round(value)), emp
               <span className="truncate text-zinc-400">{row.label}</span>
               <span className="text-amber-400">{valueLabel(row.value)}</span>
             </div>
-            <div className="h-2 overflow-hidden bg-zinc-900">
-              <div className="h-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${width}%` }} />
+            <div className="bar-track-3d h-2 overflow-hidden bg-zinc-900">
+              <div className="bar-fill-3d h-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${width}%` }} />
             </div>
           </div>
         );
@@ -1039,7 +1142,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
   const highestFuelRider = fuelLeaderboardRows.find((row) => row.fuelCost > 0);
 
   return (
-    <div className="space-y-4 p-5">
+    <div className="dashboard-3d space-y-4 p-5">
       <div>
         <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Month Overview</div>
         <div className="font-display text-3xl leading-none text-white">
@@ -1047,7 +1150,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         </div>
       </div>
 
-      <div className="relative overflow-hidden border border-orange-500/30 bg-gradient-to-br from-orange-500/20 via-amber-500/10 to-black p-5">
+      <div className="hero-3d surface-3d relative overflow-hidden border border-orange-500/30 bg-gradient-to-br from-orange-500/20 via-amber-500/10 to-black p-5">
         <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-orange-500/20 blur-3xl" />
         <div className="relative">
           <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-300">// Today Operations</div>
@@ -1058,11 +1161,11 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
             {todayTotals.started} riders started today | {fmtNum(Math.round(todayTotals.km))} km completed
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="border border-orange-500/20 bg-black/40 p-3">
+            <div className="mini-surface-3d border border-orange-500/20 bg-black/40 p-3">
               <div className="font-mono text-[9px] uppercase text-zinc-500">Today KM</div>
               <div className="font-display text-3xl text-amber-400">{fmtNum(Math.round(todayTotals.km))}</div>
             </div>
-            <div className="border border-orange-500/20 bg-black/40 p-3">
+            <div className="mini-surface-3d border border-orange-500/20 bg-black/40 p-3">
               <div className="font-mono text-[9px] uppercase text-zinc-500">Today Fuel Cost</div>
               <div className="font-display text-3xl text-orange-500">{fmtNum(Math.round(todayTotals.fuelCost))}</div>
               <div className="font-mono text-[9px] uppercase text-zinc-500">{config.currency}</div>
@@ -1079,12 +1182,12 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <div className="border border-zinc-800 bg-zinc-950 p-4">
+        <div className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
           <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Highest KM Rider</div>
           <div className="mt-2 truncate font-display text-2xl text-amber-400">{highestKmRider?.employee.name || '-'}</div>
           <div className="font-mono text-[10px] uppercase text-zinc-500">{fmtNum(Math.round(highestKmRider?.monthlyKm || 0))} km</div>
         </div>
-        <div className="border border-zinc-800 bg-zinc-950 p-4">
+        <div className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
           <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Highest Fuel Cost</div>
           <div className="mt-2 truncate font-display text-2xl text-orange-500">{highestFuelRider?.employee.name || '-'}</div>
           <div className="font-mono text-[10px] uppercase text-zinc-500">
@@ -1093,7 +1196,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         </div>
       </div>
 
-      <div className={`border p-5 ${attentionItems.length > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-green-500/30 bg-green-500/5'}`}>
+      <div className={`surface-3d border p-5 ${attentionItems.length > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-green-500/30 bg-green-500/5'}`}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <div className={`font-mono text-[10px] uppercase tracking-widest ${attentionItems.length > 0 ? 'text-red-300' : 'text-green-300'}`}>
@@ -1120,7 +1223,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
               const Icon = alert.type ? READING_TYPES[alert.type].icon : alert.title === 'Phone Missing' ? Phone : PackageCheck;
               const phone = normalizeWhatsAppPhone(alert.employee.phone);
               return (
-                <div key={alert.id} className={`border bg-black/50 p-3 ${alert.tone === 'red' ? 'border-red-500/20' : 'border-amber-500/20'}`}>
+                <div key={alert.id} className={`mini-surface-3d border bg-black/50 p-3 ${alert.tone === 'red' ? 'border-red-500/20' : 'border-amber-500/20'}`}>
                   <div className="flex items-start gap-3">
                     <div className={`flex h-10 w-10 items-center justify-center border ${statusClasses[alert.tone]}`}>
                       <Icon className="h-5 w-5" />
@@ -1158,7 +1261,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         )}
       </div>
 
-      <div className="border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent p-5">
+      <div className="surface-3d border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent p-5">
         <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500">Monthly Fuel Cost</div>
         <div className="font-display text-5xl text-orange-500">
           {config.currency} {fmtNum(Math.round(stats.totalFuel * Number(config.fuelPrice)))}
@@ -1169,7 +1272,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="border border-zinc-800 bg-zinc-950 p-5">
+        <div className="surface-3d border border-zinc-800 bg-zinc-950 p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Daily Fleet KM</div>
@@ -1179,7 +1282,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
           </div>
           <BarChart rows={dailyFleetRows} valueLabel={(value) => `${fmtNum(Math.round(value))} km`} />
         </div>
-        <div className="border border-zinc-800 bg-zinc-950 p-5">
+        <div className="surface-3d border border-zinc-800 bg-zinc-950 p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Rider Fuel Cost</div>
@@ -1195,7 +1298,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         </div>
       </div>
 
-      <div className="border border-amber-400/30 bg-zinc-950 p-5">
+      <div className="surface-3d border border-amber-400/30 bg-zinc-950 p-5">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">// Monthly Closing</div>
@@ -1207,17 +1310,17 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
           <FileDown className="h-5 w-5 text-amber-400" />
         </div>
         <div className="mb-4 grid grid-cols-3 gap-2 font-mono text-[10px] uppercase">
-          <div className="border border-zinc-800 bg-black p-3 text-zinc-500">
+          <div className="mini-surface-3d border border-zinc-800 bg-black p-3 text-zinc-500">
             Riders
             <div className="mt-1 font-display text-2xl text-white">{employees.length}</div>
           </div>
-          <div className="border border-zinc-800 bg-black p-3 text-zinc-500">
+          <div className="mini-surface-3d border border-zinc-800 bg-black p-3 text-zinc-500">
             Complete Days
             <div className="mt-1 font-display text-2xl text-green-300">
               {monthlyReportRows.reduce((sum, row) => sum + row.summary.completedDays, 0)}
             </div>
           </div>
-          <div className="border border-zinc-800 bg-black p-3 text-zinc-500">
+          <div className="mini-surface-3d border border-zinc-800 bg-black p-3 text-zinc-500">
             Incomplete
             <div className="mt-1 font-display text-2xl text-amber-300">
               {monthlyReportRows.reduce((sum, row) => sum + row.incompleteDays, 0)}
@@ -1239,7 +1342,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         {monthlyReportRows.length === 0 ? (
           <div className="border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders to report yet.</div>
         ) : (
-          <div className="overflow-hidden border border-zinc-800 bg-zinc-950">
+          <div className="table-3d overflow-hidden border border-zinc-800 bg-zinc-950">
             <div className="grid grid-cols-[1.2fr_0.8fr_1fr] border-b border-zinc-800 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">
               <div>Rider</div>
               <div className="text-right">Monthly KM</div>
@@ -1279,7 +1382,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                 <button
                   key={employee.id}
                   onClick={() => onSelectEmployee(employee.id)}
-                  className="flex w-full items-center gap-3 border border-zinc-800 bg-zinc-950 p-3 transition-colors hover:border-orange-500"
+                  className="surface-3d lift-3d flex w-full items-center gap-3 border border-zinc-800 bg-zinc-950 p-3 text-left transition-colors hover:border-orange-500"
                 >
                   <div className="relative flex h-11 w-11 items-center justify-center border border-orange-500/40 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
                     <div className="font-display text-xl text-orange-500">#{index + 1}</div>
