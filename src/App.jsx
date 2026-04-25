@@ -209,7 +209,7 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => 
     [`Generated: ${new Date().toLocaleString()}`],
     [`Fuel price: ${config.currency} ${config.fuelPrice}/L`],
     [],
-    ['Rider', 'Username', 'Bike Plate', 'Bike Model', 'Mileage (km/L)', 'Readings', 'Completed Days', 'Total KM', 'Fuel (L)', `Cost (${config.currency})`],
+    ['Rider', 'Username', 'Bike Plate', 'Bike Model', 'Mileage (km/L)', 'Readings', 'Completed Days', 'Monthly KM', 'Fuel (L)', `Monthly Fuel Cost (${config.currency})`],
   ];
 
   let grandKm = 0;
@@ -747,16 +747,28 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
 
 const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee }) => {
   const thisMonth = monthKey(today());
-  const stats = employees.reduce(
+  const monthlyReportRows = employees.map((employee) => {
+    const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
+      (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
+    );
+    const mileage = Number(employee.mileage ?? config.defaultMileage);
+    const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice);
+
+    return {
+      employee,
+      monthlyReadings,
+      summary,
+      monthlyKm: summary.totalKm,
+      fuelCost: summary.cost,
+      didToday: monthlyReadings.some((reading) => reading.date === today()),
+    };
+  });
+
+  const stats = monthlyReportRows.reduce(
     (accumulator, employee) => {
-      const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
-        (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
-      );
-      const mileage = Number(employee.mileage ?? config.defaultMileage);
-      const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice);
-      accumulator.totalKm += summary.totalKm;
-      accumulator.totalFuel += summary.fuelUsed;
-      accumulator.activeToday += monthlyReadings.some((reading) => reading.date === today()) ? 1 : 0;
+      accumulator.totalKm += employee.summary.totalKm;
+      accumulator.totalFuel += employee.summary.fuelUsed;
+      accumulator.activeToday += employee.didToday ? 1 : 0;
       return accumulator;
     },
     { totalKm: 0, totalFuel: 0, activeToday: 0 },
@@ -774,12 +786,12 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Active Riders" value={employees.length} unit="registered" icon={Users} accent="orange" />
         <StatCard label="Today" value={stats.activeToday} unit={`/ ${employees.length}`} icon={CheckCircle} accent="gold" />
-        <StatCard label="Total KM" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
+        <StatCard label="Monthly KM" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
         <StatCard label="Fuel Used" value={stats.totalFuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
       </div>
 
       <div className="border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent p-5">
-        <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500">Estimated Fuel Cost</div>
+        <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500">Monthly Fuel Cost</div>
         <div className="font-display text-5xl text-orange-500">
           {config.currency} {fmtNum(Math.round(stats.totalFuel * Number(config.fuelPrice)))}
         </div>
@@ -798,20 +810,46 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       ) : null}
 
       <div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Monthly Report</div>
+        {monthlyReportRows.length === 0 ? (
+          <div className="border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders to report yet.</div>
+        ) : (
+          <div className="overflow-hidden border border-zinc-800 bg-zinc-950">
+            <div className="grid grid-cols-[1.2fr_0.8fr_1fr] border-b border-zinc-800 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">
+              <div>Rider</div>
+              <div className="text-right">Monthly KM</div>
+              <div className="text-right">Fuel Cost</div>
+            </div>
+            {monthlyReportRows.map(({ employee, monthlyKm, fuelCost, summary }) => (
+              <button
+                key={employee.id}
+                onClick={() => onSelectEmployee(employee.id)}
+                className="grid w-full grid-cols-[1.2fr_0.8fr_1fr] items-center gap-2 border-b border-zinc-900 px-3 py-3 text-left last:border-b-0 hover:bg-orange-500/5"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-white">{employee.name}</div>
+                  <div className="font-mono text-[9px] uppercase text-zinc-500">{summary.completedDays} completed days</div>
+                </div>
+                <div className="text-right font-display text-2xl leading-none text-amber-400">{fmtNum(Math.round(monthlyKm))}</div>
+                <div className="text-right">
+                  <div className="font-display text-2xl leading-none text-orange-500">
+                    {fmtNum(Math.round(fuelCost))}
+                  </div>
+                  <div className="font-mono text-[9px] uppercase text-zinc-500">{config.currency}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Riders</div>
         {employees.length === 0 ? (
           <div className="border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders yet.</div>
         ) : (
           <div className="space-y-2">
-            {employees.map((employee) => {
-              const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
-                (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
-              );
-              const mileage = Number(employee.mileage ?? config.defaultMileage);
-              const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice);
-              const distance = summary.totalKm;
-              const didToday = monthlyReadings.some((reading) => reading.date === today());
-
+            {monthlyReportRows.map(({ employee, monthlyKm, didToday }) => {
               return (
                 <button
                   key={employee.id}
@@ -829,7 +867,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-display text-xl leading-none text-amber-400">{fmtNum(distance)}</div>
+                    <div className="font-display text-xl leading-none text-amber-400">{fmtNum(monthlyKm)}</div>
                     <div className="font-mono text-[10px] uppercase text-zinc-500">km this mo</div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-zinc-600" />
@@ -1320,9 +1358,9 @@ const EmployeeDetailView = ({
         ) : null}
 
         <div className="grid grid-cols-2 gap-2">
-          <StatCard label="Distance" value={fmtNum(Math.round(distance))} unit="km" icon={TrendingUp} accent="orange" />
+          <StatCard label="Monthly KM" value={fmtNum(Math.round(distance))} unit="km" icon={TrendingUp} accent="orange" />
           <StatCard label="Fuel" value={fuelUsed.toFixed(2)} unit="L" icon={Fuel} accent="gold" />
-          <StatCard label="Cost" value={fmtNum(Math.round(cost))} unit={config.currency} icon={DollarSign} accent="orange" />
+          <StatCard label="Monthly Fuel Cost" value={fmtNum(Math.round(cost))} unit={config.currency} icon={DollarSign} accent="orange" />
           <StatCard label="Readings" value={filtered.length} unit="entries" icon={CheckCircle} accent="gold" />
         </div>
 
@@ -1764,12 +1802,12 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
         <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
           // {new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
         </div>
-        <div className="font-display text-3xl leading-none text-white">Your Stats</div>
+        <div className="font-display text-3xl leading-none text-white">Monthly Report</div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <StatCard label="Distance" value={fmtNum(Math.round(distance))} unit="km" icon={TrendingUp} accent="orange" />
-        <StatCard label="Fuel Est." value={fuelUsed.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
+        <StatCard label="Monthly KM" value={fmtNum(Math.round(distance))} unit="km" icon={TrendingUp} accent="orange" />
+        <StatCard label="Fuel Used" value={fuelUsed.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
       </div>
 
       <div className="border border-zinc-800 bg-zinc-950 p-5">
@@ -1796,7 +1834,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
       </div>
 
       <div className="border border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-amber-500/5 p-5">
-        <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500">Estimated Monthly Fuel Cost</div>
+        <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500">Monthly Fuel Cost</div>
         <div className="mt-1 font-display text-4xl text-orange-500">
           {config.currency} {fmtNum(Math.round(cost))}
         </div>
