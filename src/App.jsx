@@ -57,11 +57,14 @@ import {
   resetRiderPin,
   riderLogin,
   saveConfig,
+  saveDailyReview,
   saveEmployee,
   saveReading,
   signOut,
   subscribeConfig,
+  subscribeDailyReviews,
   subscribeEmployees,
+  subscribeFuelPriceHistory,
   subscribeReadings,
   subscribeRoutePoints,
   subscribeRouteSessions,
@@ -96,10 +99,22 @@ const READING_TYPES = {
 };
 
 const HIGH_DAILY_KM_WARNING = 300;
+const ROUTE_ODOMETER_DIFF_WARNING_PCT = 25;
+const APP_VERSION = '1.0.0';
 const APP_TIME_ZONE = 'Asia/Karachi';
 const MISSING_READING_CUTOFFS = {
   morning: { hour: 11, label: '11:00 AM' },
   evening: { hour: 18, label: '6:00 PM' },
+};
+const LATE_READING_CUTOFFS = {
+  morning: { hour: 11, minute: 0, label: '11:00 AM' },
+  evening: { hour: 20, minute: 0, label: '8:00 PM' },
+};
+const REVIEW_STATUS = {
+  pending_review: { label: 'Pending', tone: 'amber' },
+  approved: { label: 'Approved', tone: 'green' },
+  problem: { label: 'Problem', tone: 'red' },
+  paid: { label: 'Paid', tone: 'green' },
 };
 const ROUTE_TRACKING_KEY = 'fleetline.active-route-session.v1';
 const ROUTE_SAMPLE_INTERVAL_MS = 60000;
@@ -156,6 +171,8 @@ const fmtDate = (value) =>
 const fmtShort = (value) =>
   new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 const fmtNum = (value) => Number(value ?? 0).toLocaleString('en-US');
+const fmtTime = (value) =>
+  value ? new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '-';
 const fmtDistance = (meters) => {
   const value = Number(meters) || 0;
   return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${Math.round(value)} m`;
@@ -313,7 +330,7 @@ const getNextReadingType = (readings, date = today()) => {
   return 'evening';
 };
 
-const getMonthlySummary = (readings, selectedMonth, mileage, fuelPrice) => {
+const getMonthlySummary = (readings, selectedMonth, mileage, fuelPrice, fuelPriceHistory = []) => {
   const days = new Map();
   sortReadingsAsc(readings)
     .filter((reading) => !reading.queued && (!selectedMonth || monthKey(reading.date) === selectedMonth))
@@ -326,13 +343,17 @@ const getMonthlySummary = (readings, selectedMonth, mileage, fuelPrice) => {
   const dailySummaries = [...days.entries()].map(([date, rows]) => getDaySummary(rows, date));
   const totalKm = dailySummaries.reduce((sum, day) => sum + (day.complete ? day.distance : 0), 0);
   const fuelUsed = mileage > 0 ? totalKm / mileage : 0;
+  const cost = dailySummaries.reduce((sum, day) => {
+    const dayFuel = mileage > 0 && day.complete ? day.distance / mileage : 0;
+    return sum + dayFuel * getFuelPriceForDate(day.date, fuelPriceHistory, fuelPrice);
+  }, 0);
 
   return {
     dailySummaries,
     completedDays: dailySummaries.filter((day) => day.complete).length,
     totalKm,
     fuelUsed,
-    cost: fuelUsed * Number(fuelPrice),
+    cost,
     warningCount: dailySummaries.filter((day) => day.invalid || day.distance > HIGH_DAILY_KM_WARNING).length,
   };
 };
@@ -344,6 +365,127 @@ const getMinutesSinceMidnight = (date = new Date()) => {
 
 const isPastCutoff = (type, date = new Date()) =>
   getMinutesSinceMidnight(date) >= MISSING_READING_CUTOFFS[type].hour * 60;
+
+const getTimestampMinutes = (isoValue) => {
+  if (!isoValue) return 0;
+  const appTime = getAppDateTime(new Date(isoValue));
+  return appTime.hour * 60 + appTime.minute;
+};
+
+const isLateReading = (type, reading) => {
+  if (!reading?.submittedAt) return false;
+  const cutoff = LATE_READING_CUTOFFS[type];
+  return getTimestampMinutes(reading.submittedAt) > cutoff.hour * 60 + cutoff.minute;
+};
+
+const buildFuelPriceMap = (fuelPriceHistory = []) =>
+  fuelPriceHistory.reduce((accumulator, row) => {
+    accumulator[row.date] = row;
+    return accumulator;
+  }, {});
+
+const getFuelPriceForDate = (date, fuelPriceHistory = [], fallbackPrice = 0) => {
+  const exactPrice = buildFuelPriceMap(fuelPriceHistory)[date]?.fuelPrice;
+  if (exactPrice !== undefined) return Number(exactPrice);
+
+  const nearestHistoricalPrice = [...fuelPriceHistory]
+    .filter((row) => row.date <= date)
+    .sort((left, right) => right.date.localeCompare(left.date))[0]?.fuelPrice;
+
+  return Number(nearestHistoricalPrice ?? fallbackPrice);
+};
+
+const getReviewKey = (employeeId, date) => `${employeeId}:${date}`;
+
+const buildDailyReviewMap = (dailyReviews = []) =>
+  dailyReviews.reduce((accumulator, review) => {
+    accumulator[getReviewKey(review.employeeId, review.date)] = review;
+    return accumulator;
+  }, {});
+
+const getRouteForDay = (routeSessions = [], employeeId, date) =>
+  routeSessions
+    .filter((session) => session.employeeId === employeeId && session.date === date)
+    .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime())[0] ?? null;
+
+const getRouteHealth = ({ routeSession, routePoints = [], odometerKm = 0 }) => {
+  const sortedPoints = sortRoutePoints(routePoints);
+  const gpsDistanceM = routeSession?.totalDistanceM || calculateRouteDistanceM(sortedPoints);
+  const gpsDistanceKm = gpsDistanceM / 1000;
+  const activeMinutes =
+    sortedPoints.length > 1
+      ? Math.max(0, Math.round((new Date(sortedPoints.at(-1).recordedAt).getTime() - new Date(sortedPoints[0].recordedAt).getTime()) / 60000))
+      : 0;
+  const diffKm = odometerKm > 0 && gpsDistanceKm > 0 ? Math.abs(odometerKm - gpsDistanceKm) : 0;
+  const diffPct = odometerKm > 0 && gpsDistanceKm > 0 ? (diffKm / odometerKm) * 100 : null;
+  const confidence =
+    odometerKm > 0 && gpsDistanceKm > 0
+      ? Math.max(0, Math.min(100, Math.round(100 - Math.min(100, diffPct ?? 100))))
+      : sortedPoints.length > 0
+        ? 55
+        : 0;
+
+  return {
+    activeMinutes,
+    pointCount: sortedPoints.length,
+    gpsDistanceM,
+    gpsDistanceKm,
+    diffKm,
+    diffPct,
+    confidence,
+    hasGps: sortedPoints.length > 0,
+  };
+};
+
+const getProblemFlags = ({ daySummary, routeHealth, review, now = new Date(), date = today() }) => {
+  const flags = [];
+
+  if (!daySummary.morning && isPastCutoff('morning', now)) {
+    flags.push({ id: 'missing_morning', label: 'Missing Morning', tone: 'red' });
+  }
+
+  if (daySummary.morning && !daySummary.evening && isPastCutoff('evening', now)) {
+    flags.push({ id: 'missing_evening', label: 'Missing Evening', tone: 'red' });
+  }
+
+  if (daySummary.invalid) {
+    flags.push({ id: 'invalid_odo', label: 'Evening < Morning', tone: 'red' });
+  }
+
+  if (daySummary.complete && daySummary.distance > HIGH_DAILY_KM_WARNING) {
+    flags.push({ id: 'high_km', label: `High KM > ${HIGH_DAILY_KM_WARNING}`, tone: 'amber' });
+  }
+
+  if (daySummary.complete && !routeHealth.hasGps) {
+    flags.push({ id: 'gps_missing', label: 'GPS Missing', tone: 'red' });
+  }
+
+  if (daySummary.complete && routeHealth.diffPct !== null && routeHealth.diffPct > ROUTE_ODOMETER_DIFF_WARNING_PCT) {
+    flags.push({ id: 'gps_diff', label: `GPS Diff ${Math.round(routeHealth.diffPct)}%`, tone: 'amber' });
+  }
+
+  if ((daySummary.morning && !daySummary.morning.photoPath) || (daySummary.evening && !daySummary.evening.photoPath)) {
+    flags.push({ id: 'photo_missing', label: 'Photo Missing', tone: 'red' });
+  }
+
+  if (isLateReading('morning', daySummary.morning)) {
+    flags.push({ id: 'morning_late', label: `Morning Late > ${LATE_READING_CUTOFFS.morning.label}`, tone: 'amber' });
+  }
+
+  if (isLateReading('evening', daySummary.evening)) {
+    flags.push({ id: 'evening_late', label: `Evening Late > ${LATE_READING_CUTOFFS.evening.label}`, tone: 'amber' });
+  }
+
+  if (review?.status === 'problem') {
+    flags.push({ id: 'admin_problem', label: 'Marked Problem', tone: 'red' });
+  }
+
+  if (date > today()) {
+    return [];
+  }
+
+  return flags;
+};
 
 const getMissingReadingAlerts = (employees, readingsByEmployee, date = today(), now = new Date()) => {
   const alerts = [];
@@ -412,6 +554,7 @@ const getRiderTodayStatus = (summary, now = new Date()) => {
 const statusClasses = {
   green: 'border-green-500/30 bg-green-500/10 text-green-300',
   amber: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  teal: 'border-teal-500/30 bg-teal-500/10 text-teal-300',
   red: 'border-red-500/30 bg-red-500/10 text-red-300',
   zinc: 'border-zinc-700 bg-zinc-900 text-zinc-300',
 };
@@ -479,6 +622,59 @@ const getAttentionItems = (employees, readingsByEmployee, missingAlerts, date = 
   return [...alertItems, ...invalidItems, ...noPhoneItems, ...waitingItems];
 };
 
+const buildDailyCloseRows = ({
+  employees,
+  readingsByEmployee,
+  config,
+  routeSessions = [],
+  routePoints = [],
+  dailyReviews = [],
+  fuelPriceHistory = [],
+  date = today(),
+  now = new Date(),
+}) => {
+  const pointsBySession = groupRoutePointsBySession(routePoints);
+  const reviewMap = buildDailyReviewMap(dailyReviews);
+
+  return employees
+    .filter((employee) => employee.active !== false)
+    .map((employee) => {
+      const daySummary = getDaySummary(readingsByEmployee[employee.id] || [], date);
+      const routeSession = getRouteForDay(routeSessions, employee.id, date);
+      const routeHealth = getRouteHealth({
+        routeSession,
+        routePoints: routeSession ? pointsBySession[routeSession.id] || [] : [],
+        odometerKm: daySummary.distance,
+      });
+      const review = reviewMap[getReviewKey(employee.id, date)] ?? null;
+      const flags = getProblemFlags({ daySummary, routeHealth, review, now, date });
+      const mileage = Number(employee.mileage ?? config.defaultMileage);
+      const fuelPrice = getFuelPriceForDate(date, fuelPriceHistory, config.fuelPrice);
+      const fuelUsed = mileage > 0 && daySummary.complete ? daySummary.distance / mileage : 0;
+      const fuelCost = fuelUsed * fuelPrice;
+      const todayStatus = getRiderTodayStatus(daySummary, now);
+      const displayStatus =
+        review?.status ??
+        (flags.some((flag) => flag.tone === 'red') ? 'problem' : daySummary.complete ? 'pending_review' : 'pending_review');
+
+      return {
+        employee,
+        date,
+        daySummary,
+        routeSession,
+        routeHealth,
+        review,
+        flags,
+        mileage,
+        fuelPrice,
+        fuelUsed,
+        fuelCost,
+        todayStatus,
+        displayStatus,
+      };
+    });
+};
+
 const buildReadingsMap = (rows) =>
   rows.reduce((accumulator, row) => {
     accumulator[row.employeeId] = accumulator[row.employeeId] || [];
@@ -486,7 +682,7 @@ const buildReadingsMap = (rows) =>
     return accumulator;
   }, {});
 
-const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => {
+const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth, fuelPriceHistory = []) => {
   const rows = [
     [`FleetLine Fleet Report - ${selectedMonth || 'All time'}`],
     [`Generated: ${new Date().toLocaleString()}`],
@@ -504,7 +700,7 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => 
     const readings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
       (reading) => !selectedMonth || monthKey(reading.date) === selectedMonth,
     );
-    const summary = getMonthlySummary(readings, selectedMonth, mileage, config.fuelPrice);
+    const summary = getMonthlySummary(readings, selectedMonth, mileage, config.fuelPrice, fuelPriceHistory);
 
     grandKm += summary.totalKm;
     grandFuel += summary.fuelUsed;
@@ -529,7 +725,7 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth) => 
   return rows;
 };
 
-const buildEmployeeCSV = (employee, readingsByEmployee, config, selectedMonth) => {
+const buildEmployeeCSV = (employee, readingsByEmployee, config, selectedMonth, fuelPriceHistory = []) => {
   const mileage = Number(employee.mileage ?? config.defaultMileage);
   const readings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
     (reading) => !selectedMonth || monthKey(reading.date) === selectedMonth,
@@ -543,12 +739,13 @@ const buildEmployeeCSV = (employee, readingsByEmployee, config, selectedMonth) =
     ['Date', 'Morning Odo', 'Evening Odo', 'Daily Distance (km)', 'Fuel Used (L)', `Cost (${config.currency})`, 'Status'],
   ];
 
-  const dailySummaries = getMonthlySummary(readings, selectedMonth, mileage, config.fuelPrice).dailySummaries;
+  const dailySummaries = getMonthlySummary(readings, selectedMonth, mileage, config.fuelPrice, fuelPriceHistory).dailySummaries;
 
   dailySummaries.forEach((day) => {
     const distance = day.complete ? day.distance : 0;
     const fuel = mileage > 0 && day.complete ? distance / mileage : 0;
-    const cost = fuel * Number(config.fuelPrice);
+    const fuelPrice = getFuelPriceForDate(day.date, fuelPriceHistory, config.fuelPrice);
+    const cost = fuel * fuelPrice;
     rows.push([
       day.date,
       day.morning?.km ?? '',
@@ -556,7 +753,7 @@ const buildEmployeeCSV = (employee, readingsByEmployee, config, selectedMonth) =
       distance,
       fuel.toFixed(2),
       cost.toFixed(2),
-      day.invalid ? 'Check odometer: evening lower than morning' : day.complete ? 'Complete' : 'Incomplete',
+      day.invalid ? 'Check odometer: evening lower than morning' : day.complete ? `Complete @ ${config.currency} ${fuelPrice}/L` : 'Incomplete',
     ]);
   });
 
@@ -896,9 +1093,10 @@ const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
   const colors = {
     orange: 'text-orange-500 border-orange-500/30 stat-tone-orange',
     gold: 'text-amber-400 border-amber-400/30 stat-tone-gold',
+    teal: 'text-teal-300 border-teal-500/30 stat-tone-teal',
     white: 'text-white border-zinc-700 stat-tone-white',
   };
-  const [textColor, borderColor, toneClass] = colors[accent].split(' ');
+  const [textColor, borderColor, toneClass] = (colors[accent] ?? colors.orange).split(' ');
 
   return (
     <div className={`surface-3d relative overflow-hidden border p-4 ${borderColor} ${toneClass}`}>
@@ -916,6 +1114,12 @@ const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
     </div>
   );
 };
+
+const StatusBadge = ({ label, tone = 'zinc' }) => (
+  <span className={`inline-flex items-center rounded-full border px-2 py-1 font-mono text-[9px] uppercase tracking-widest ${statusClasses[tone] ?? statusClasses.zinc}`}>
+    {label}
+  </span>
+);
 
 const BarChart = ({ rows, valueLabel = (value) => fmtNum(Math.round(value)), emptyText = 'No chart data yet.' }) => {
   const maxValue = Math.max(0, ...rows.map((row) => Number(row.value) || 0));
@@ -1507,7 +1711,198 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
   );
 };
 
-const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee }) => {
+const DailyCloseSheet = ({ rows, config, onSelectEmployee, onPreviewPhoto, onSaveDailyReview }) => {
+  const [drafts, setDrafts] = useState({});
+  const [savingKey, setSavingKey] = useState('');
+
+  const getDraft = (row) => {
+    const key = getReviewKey(row.employee.id, row.date);
+    return drafts[key] ?? {
+      status: row.review?.status ?? row.displayStatus,
+      notes: row.review?.notes ?? '',
+    };
+  };
+
+  const updateDraft = (row, patch) => {
+    const key = getReviewKey(row.employee.id, row.date);
+    setDrafts((current) => ({
+      ...current,
+      [key]: {
+        ...getDraft(row),
+        ...patch,
+      },
+    }));
+  };
+
+  const handleSave = async (row) => {
+    const key = getReviewKey(row.employee.id, row.date);
+    const draft = getDraft(row);
+    setSavingKey(key);
+    try {
+      await onSaveDailyReview({
+        employeeId: row.employee.id,
+        date: row.date,
+        status: draft.status,
+        notes: draft.notes,
+      });
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    } finally {
+      setSavingKey('');
+    }
+  };
+
+  return (
+    <div className="ledger-panel-3d border border-orange-500/30 p-5">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">// Daily Truth Record</div>
+          <div className="font-display text-4xl leading-none text-white">Daily Close Sheet</div>
+          <div className="mt-1 text-xs text-zinc-400">
+            Morning, evening, route proof, photos, fuel cost, flags, and admin notes in one place.
+          </div>
+        </div>
+        <PackageCheck className="h-7 w-7 text-orange-500" />
+      </div>
+
+      <div className="space-y-3">
+        {rows.length === 0 ? (
+          <div className="empty-state p-8 text-center">
+            <PackageCheck className="empty-icon mx-auto mb-3 h-10 w-10 text-orange-500/80" />
+            <div className="text-sm text-zinc-400">Add riders to start building daily close sheets.</div>
+          </div>
+        ) : null}
+        {rows.map((row) => {
+          const key = getReviewKey(row.employee.id, row.date);
+          const draft = getDraft(row);
+          const reviewMeta = REVIEW_STATUS[draft.status] ?? REVIEW_STATUS.pending_review;
+          const hasFlags = row.flags.length > 0;
+
+          return (
+            <div key={key} className={`surface-3d border p-4 ${hasFlags ? 'border-amber-500/30' : 'border-zinc-800'}`}>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <button onClick={() => onSelectEmployee(row.employee.id)} className="min-w-0 text-left">
+                  <div className="font-display text-2xl leading-none text-white">{row.employee.name}</div>
+                  <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                    @{row.employee.username} | {row.employee.bikePlate}
+                  </div>
+                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <StatusBadge label={row.todayStatus.label} tone={row.todayStatus.tone} />
+                  <StatusBadge label={reviewMeta.label} tone={reviewMeta.tone} />
+                </div>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-4">
+                {[
+                  ['Morning', row.daySummary.morning],
+                  ['Evening', row.daySummary.evening],
+                ].map(([label, reading]) => (
+                  <div key={label} className="mini-surface-3d border border-zinc-800 bg-black/45 p-3">
+                    <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">{label} Reading</div>
+                    <div className="mt-1 font-display text-2xl leading-none text-white">
+                      {reading ? fmtNum(reading.km) : '-'}
+                      <span className="ml-1 font-mono text-[9px] text-zinc-500">km</span>
+                    </div>
+                    <div className="mt-1 font-mono text-[9px] uppercase text-zinc-500">
+                      {reading ? fmtTime(reading.submittedAt) : 'not submitted'}
+                    </div>
+                    {reading?.photoPath ? (
+                      <button
+                        onClick={() => onPreviewPhoto(reading.photoPath)}
+                        className="mt-2 font-mono text-[9px] uppercase tracking-widest text-orange-500 hover:text-amber-300"
+                      >
+                        View Photo Proof
+                      </button>
+                    ) : (
+                      <div className="mt-2 font-mono text-[9px] uppercase tracking-widest text-red-300/80">No Photo</div>
+                    )}
+                  </div>
+                ))}
+
+                <div className="mini-surface-3d border border-orange-500/25 bg-black/45 p-3">
+                  <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">Daily KM / Fuel</div>
+                  <div className={`mt-1 font-display text-2xl leading-none ${row.daySummary.invalid ? 'text-red-300' : 'text-amber-400'}`}>
+                    {fmtNum(Math.round(row.daySummary.distance))}
+                    <span className="ml-1 font-mono text-[9px] text-zinc-500">km</span>
+                  </div>
+                  <div className="mt-1 font-mono text-[9px] uppercase text-zinc-500">
+                    {row.fuelUsed.toFixed(2)} L | {config.currency} {fmtNum(Math.round(row.fuelCost))}
+                  </div>
+                  <div className="mt-1 font-mono text-[9px] uppercase text-zinc-600">
+                    price locked @ {config.currency} {row.fuelPrice}/L
+                  </div>
+                </div>
+
+                <div className="mini-surface-3d border border-teal-500/25 bg-black/45 p-3">
+                  <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">Route Health</div>
+                  <div className="mt-1 font-display text-2xl leading-none text-teal-300">
+                    {row.routeHealth.confidence}%
+                  </div>
+                  <div className="mt-1 font-mono text-[9px] uppercase text-zinc-500">
+                    GPS {row.routeHealth.gpsDistanceKm.toFixed(1)} km | {row.routeHealth.pointCount} pts
+                  </div>
+                  <div className="mt-1 font-mono text-[9px] uppercase text-zinc-600">
+                    active {row.routeHealth.activeMinutes} min | diff {row.routeHealth.diffPct === null ? '-' : `${Math.round(row.routeHealth.diffPct)}%`}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {row.flags.length > 0 ? (
+                  row.flags.map((flag) => <StatusBadge key={`${key}-${flag.id}`} label={flag.label} tone={flag.tone} />)
+                ) : (
+                  <StatusBadge label="No Problem Flags" tone="green" />
+                )}
+              </div>
+
+              <div className="mt-4 grid gap-2 md:grid-cols-[180px_1fr_120px]">
+                <select
+                  value={draft.status}
+                  onChange={(event) => updateDraft(row, { status: event.target.value })}
+                  className="field-focus mini-surface-3d border border-zinc-800 bg-black px-3 py-2 font-mono text-xs uppercase text-zinc-200"
+                >
+                  {Object.entries(REVIEW_STATUS).map(([value, meta]) => (
+                    <option key={value} value={value}>{meta.label}</option>
+                  ))}
+                </select>
+                <textarea
+                  value={draft.notes}
+                  onChange={(event) => updateDraft(row, { notes: event.target.value })}
+                  placeholder="Admin notes, e.g. photo unclear, route checked, approved for payment..."
+                  className="field-focus mini-surface-3d min-h-[42px] resize-y border border-zinc-800 bg-black px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
+                />
+                <button
+                  onClick={() => handleSave(row)}
+                  disabled={savingKey === key}
+                  className="button-3d button-3d-outline px-3 py-2 font-display tracking-widest disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingKey === key ? 'SAVING' : 'SAVE'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const AdminOverview = ({
+  employees,
+  readingsByEmployee,
+  config,
+  routeSessions,
+  routePoints,
+  fuelPriceHistory,
+  dailyReviews,
+  onSelectEmployee,
+  onPreviewPhoto,
+  onSaveDailyReview,
+}) => {
   const [now, setNow] = useState(() => new Date());
   const thisMonth = monthKey(today());
   const alertDate = today();
@@ -1516,6 +1911,24 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
   const morningAlerts = missingAlerts.filter((alert) => alert.type === 'morning').length;
   const eveningAlerts = missingAlerts.filter((alert) => alert.type === 'evening').length;
   const attentionItems = getAttentionItems(employees, readingsByEmployee, missingAlerts, alertDate, now);
+  const dailyCloseRows = buildDailyCloseRows({
+    employees,
+    readingsByEmployee,
+    config,
+    routeSessions,
+    routePoints,
+    dailyReviews,
+    fuelPriceHistory,
+    date: alertDate,
+    now,
+  });
+  const activeRouteCount = routeSessions.filter((session) => session.date === alertDate && session.status === 'active').length;
+  const inMarketCount = dailyCloseRows.filter((row) => row.daySummary.morning && !row.daySummary.evening).length;
+  const needsReviewCount = dailyCloseRows.filter(
+    (row) =>
+      row.flags.length > 0 ||
+      (row.daySummary.complete && !['approved', 'paid'].includes(row.review?.status ?? '')),
+  ).length;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 60000);
@@ -1527,7 +1940,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
     );
     const mileage = Number(employee.mileage ?? config.defaultMileage);
-    const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice);
+    const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice, fuelPriceHistory);
     const dailySummaries = monthDates.map((date) => getDaySummary(readingsByEmployee[employee.id] || [], date));
     const incompleteDays = dailySummaries.filter((day) => day.morning || day.evening).filter((day) => !day.complete).length;
     const todaySummary = getDaySummary(readingsByEmployee[employee.id] || [], alertDate);
@@ -1557,7 +1970,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       accumulator.started += row.todaySummary.morning ? 1 : 0;
       accumulator.completed += row.todaySummary.complete ? 1 : 0;
       accumulator.km += distance;
-      accumulator.fuelCost += fuel * Number(config.fuelPrice);
+      accumulator.fuelCost += fuel * getFuelPriceForDate(alertDate, fuelPriceHistory, config.fuelPrice);
       return accumulator;
     },
     { started: 0, completed: 0, km: 0, fuelCost: 0 },
@@ -1567,10 +1980,11 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
     (accumulator, employee) => {
       accumulator.totalKm += employee.summary.totalKm;
       accumulator.totalFuel += employee.summary.fuelUsed;
+      accumulator.totalCost += employee.summary.cost;
       accumulator.activeToday += employee.didToday ? 1 : 0;
       return accumulator;
     },
-    { totalKm: 0, totalFuel: 0, activeToday: 0 },
+    { totalKm: 0, totalFuel: 0, totalCost: 0, activeToday: 0 },
   );
 
   const dailyFleetRows = monthDates.slice(-10).map((date) => {
@@ -1596,9 +2010,9 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
   return (
     <div className="dashboard-3d space-y-4 p-5">
       <div>
-        <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Month Overview</div>
+        <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Today Command Center</div>
         <div className="font-display text-3xl leading-none text-white">
-          {new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+          {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
         </div>
       </div>
 
@@ -1626,12 +2040,27 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <StatCard label="In Market" value={inMarketCount} unit="riders" icon={Route} accent="teal" />
+        <StatCard label="Missing Evening" value={eveningAlerts} unit="alerts" icon={Moon} accent={eveningAlerts ? 'gold' : 'white'} />
+        <StatCard label="GPS Active" value={activeRouteCount} unit="routes" icon={MapPin} accent="orange" />
+        <StatCard label="Needs Review" value={needsReviewCount} unit="items" icon={Shield} accent={needsReviewCount ? 'gold' : 'white'} />
+      </div>
+
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Active Riders" value={employees.length} unit="registered" icon={Users} accent="orange" />
         <StatCard label="Today" value={stats.activeToday} unit={`/ ${employees.length}`} icon={CheckCircle} accent="gold" />
         <StatCard label="Monthly KM" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
         <StatCard label="Fuel Used" value={stats.totalFuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
       </div>
+
+      <DailyCloseSheet
+        rows={dailyCloseRows}
+        config={config}
+        onSelectEmployee={onSelectEmployee}
+        onPreviewPhoto={onPreviewPhoto}
+        onSaveDailyReview={onSaveDailyReview}
+      />
 
       <div className="grid grid-cols-2 gap-2">
         <div className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
@@ -1716,10 +2145,10 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       <div className="surface-3d border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent p-5">
         <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500">Monthly Fuel Cost</div>
         <div className="font-display text-5xl text-orange-500">
-          {config.currency} {fmtNum(Math.round(stats.totalFuel * Number(config.fuelPrice)))}
+          {config.currency} {fmtNum(Math.round(stats.totalCost))}
         </div>
         <div className="mt-1 font-mono text-[10px] text-zinc-500">
-          @ {config.currency} {config.fuelPrice}/litre
+          Uses the saved fuel price for each submitted day.
         </div>
       </div>
 
@@ -1773,7 +2202,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
           <div className="mini-surface-3d border border-orange-500/25 bg-black/60 p-3">
             <div className="font-mono text-[9px] uppercase text-zinc-500">Fuel Cost</div>
             <div className="font-display text-3xl leading-none text-orange-500">
-              {fmtNum(Math.round(stats.totalFuel * Number(config.fuelPrice)))}
+              {fmtNum(Math.round(stats.totalCost))}
             </div>
             <div className="font-mono text-[9px] uppercase text-zinc-600">{config.currency}</div>
           </div>
@@ -1799,7 +2228,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
           </div>
           {employees.length > 0 ? (
             <button
-              onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
+              onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth, fuelPriceHistory), `fleet_${thisMonth}.csv`)}
               className="button-3d button-3d-outline flex items-center justify-center gap-2 px-4 py-2.5 font-display tracking-widest"
             >
               <FileDown className="h-4 w-4" /> EXPORT MONTHLY CSV
@@ -2167,7 +2596,7 @@ const ResetPinModal = ({ employee, busy, onClose, onConfirm }) => {
   );
 };
 
-const AdminSettings = ({ config, onSave }) => {
+const AdminSettings = ({ config, fuelPriceHistory = [], onSave }) => {
   const [form, setForm] = useState(config);
   const [saved, setSaved] = useState(false);
 
@@ -2215,6 +2644,31 @@ const AdminSettings = ({ config, onSave }) => {
           value={form.defaultMileage}
           onChange={(event) => setForm((current) => ({ ...current, defaultMileage: event.target.value }))}
         />
+      </div>
+
+      <div className="surface-3d border border-orange-500/25 bg-zinc-950 p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <Fuel className="h-5 w-5 text-orange-500" />
+          <div className="font-display text-xl text-orange-500">FUEL PRICE HISTORY</div>
+        </div>
+        <div className="mb-3 text-xs text-zinc-400">
+          Each daily close uses the fuel price saved for that day, so old reports do not change when petrol changes later.
+        </div>
+        <div className="space-y-2">
+          {fuelPriceHistory.slice(0, 8).map((row) => (
+            <div key={row.date} className="mini-surface-3d flex items-center justify-between border border-zinc-800 bg-black/40 px-3 py-2">
+              <div className="font-mono text-[10px] uppercase text-zinc-500">{fmtDate(row.date)}</div>
+              <div className="font-display text-xl leading-none text-amber-400">
+                {row.currency} {row.fuelPrice}
+              </div>
+            </div>
+          ))}
+          {fuelPriceHistory.length === 0 ? (
+            <div className="mini-surface-3d border border-dashed border-zinc-800 p-4 text-sm text-zinc-500">
+              No fuel price history yet. Save settings once to lock today&apos;s price.
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="surface-3d border border-[#25D366]/30 bg-zinc-950 p-5">
@@ -2404,6 +2858,96 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
   </div>
 );
 
+const AppHealthPanel = ({
+  appHealth,
+  queuedItems,
+  employees,
+  readings,
+  routeSessions,
+  routePoints,
+  fuelPriceHistory,
+  dailyReviews,
+}) => {
+  const failedQueue = queuedItems.filter((item) => item.status === 'failed').length;
+  const syncingQueue = queuedItems.filter((item) => item.status === 'syncing').length;
+  const pendingQueue = queuedItems.length - failedQueue - syncingQueue;
+  const healthChecks = [
+    {
+      label: 'Backend Connection',
+      value: appHealth.supabaseConfigured ? 'Configured' : 'Missing Env',
+      tone: appHealth.supabaseConfigured ? 'green' : 'red',
+      detail: 'VITE_SUPABASE_URL and anon key',
+    },
+    {
+      label: 'Browser Network',
+      value: appHealth.isOnline ? 'Online' : 'Offline',
+      tone: appHealth.isOnline ? 'green' : 'amber',
+      detail: appHealth.isOnline ? 'Realtime can refresh' : 'Writes will queue',
+    },
+    {
+      label: 'Location Permission',
+      value: appHealth.locationPermission,
+      tone: appHealth.locationPermission === 'granted' ? 'green' : appHealth.locationPermission === 'denied' ? 'red' : 'amber',
+      detail: 'Needed for route proof',
+    },
+    {
+      label: 'Offline Queue',
+      value: queuedItems.length,
+      tone: failedQueue ? 'red' : queuedItems.length ? 'amber' : 'green',
+      detail: `${pendingQueue} queued | ${syncingQueue} syncing | ${failedQueue} failed`,
+    },
+    {
+      label: 'Last Sync',
+      value: appHealth.lastSyncAt ? fmtTime(appHealth.lastSyncAt) : 'Waiting',
+      tone: appHealth.lastSyncAt ? 'green' : 'amber',
+      detail: appHealth.lastSyncAt ? fmtDate(appHealth.lastSyncAt) : 'No realtime refresh yet',
+    },
+    {
+      label: 'App Version',
+      value: appHealth.appVersion,
+      tone: 'zinc',
+      detail: 'Frontend build label',
+    },
+  ];
+
+  return (
+    <div className="dashboard-3d space-y-4 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Diagnostics</div>
+          <div className="font-display text-3xl leading-none text-white">App Health</div>
+          <div className="mt-1 text-xs text-zinc-500">Use this screen when login, GPS, sync, or photos feel confusing.</div>
+        </div>
+        <Shield className="h-7 w-7 text-orange-500" />
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-2">
+        {healthChecks.map((check) => (
+          <div key={check.label} className={`surface-3d border p-4 ${statusClasses[check.tone] ?? statusClasses.zinc}`}>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">{check.label}</div>
+            <div className="mt-1 font-display text-3xl leading-none text-white">{check.value}</div>
+            <div className="mt-1 text-xs text-zinc-400">{check.detail}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="ledger-panel-3d border border-orange-500/25 p-5">
+        <div className="mb-4 font-display text-2xl text-white">Realtime Data Counters</div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <StatCard label="Riders" value={employees.length} unit="rows" icon={Users} accent="orange" />
+          <StatCard label="Readings" value={readings.length} unit="rows" icon={Camera} accent="gold" />
+          <StatCard label="Routes" value={routeSessions.length} unit="sessions" icon={Route} accent="teal" />
+          <StatCard label="GPS Points" value={routePoints.length} unit="points" icon={MapPin} accent="white" />
+          <StatCard label="Fuel Prices" value={fuelPriceHistory.length} unit="days" icon={Fuel} accent="orange" />
+          <StatCard label="Reviews" value={dailyReviews.length} unit="rows" icon={PackageCheck} accent="gold" />
+          <StatCard label="SW Support" value={appHealth.serviceWorkerSupported ? 'Yes' : 'No'} unit="" icon={RefreshCw} accent={appHealth.serviceWorkerSupported ? 'teal' : 'white'} />
+          <StatCard label="GPS Support" value={appHealth.gpsSupported ? 'Yes' : 'No'} unit="" icon={MapPin} accent={appHealth.gpsSupported ? 'teal' : 'gold'} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const EmployeeRouteHistory = ({ employee, routeSessions = [], routePoints = [], selectedMonth, onLoadRoutePoints }) => {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
@@ -2469,12 +3013,98 @@ const EmployeeRouteHistory = ({ employee, routeSessions = [], routePoints = [], 
   );
 };
 
+const AdminActivityTimeline = ({ employee, readings = [], routeSessions = [], dailyReviews = [], auditRows = [] }) => {
+  const matchesEmployeeAudit = (row) =>
+    row.entityId?.includes(employee.id) ||
+    row.before?.employee_id === employee.id ||
+    row.after?.employee_id === employee.id ||
+    row.before?.employeeId === employee.id ||
+    row.after?.employeeId === employee.id;
+
+  const events = [
+    ...readings.map((reading) => ({
+      id: `reading-${reading.id}`,
+      at: reading.submittedAt,
+      title: `${readingTypeLabel(reading)} submitted`,
+      detail: `${fmtNum(reading.km)} km | ${reading.photoPath ? 'photo saved' : 'photo missing'}`,
+      tone: reading.photoPath ? 'green' : 'amber',
+      icon: Camera,
+    })),
+    ...routeSessions
+      .filter((session) => session.employeeId === employee.id)
+      .map((session) => ({
+        id: `route-${session.id}`,
+        at: session.endedAt ?? session.startedAt,
+        title: session.status === 'active' ? 'Route active' : session.status === 'deleted' ? 'Route deleted' : 'Route closed',
+        detail: `${fmtDistance(session.totalDistanceM)} | ${session.pointCount ?? 0} GPS points`,
+        tone: session.status === 'active' ? 'amber' : session.status === 'deleted' ? 'red' : 'teal',
+        icon: Route,
+      })),
+    ...dailyReviews
+      .filter((review) => review.employeeId === employee.id)
+      .map((review) => ({
+        id: `review-${review.id}`,
+        at: review.updatedAt,
+        title: `Daily review: ${REVIEW_STATUS[review.status]?.label ?? review.status}`,
+        detail: `${fmtDate(review.date)}${review.notes ? ` | ${review.notes}` : ''}`,
+        tone: REVIEW_STATUS[review.status]?.tone ?? 'zinc',
+        icon: PackageCheck,
+      })),
+    ...auditRows
+      .filter(matchesEmployeeAudit)
+      .map((row) => ({
+        id: `audit-${row.id}`,
+        at: row.createdAt,
+        title: row.action,
+        detail: `${row.entityType} | ${row.entityId || employee.name}`,
+        tone: row.action?.includes('delete') ? 'red' : 'zinc',
+        icon: History,
+      })),
+  ]
+    .filter((event) => event.at)
+    .sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime())
+    .slice(0, 18);
+
+  return (
+    <div>
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Admin Activity Timeline</div>
+      {events.length === 0 ? (
+        <div className="empty-state p-8 text-center">
+          <History className="empty-icon mx-auto mb-3 h-10 w-10 text-orange-500/80" />
+          <div className="text-sm text-zinc-400">No activity timeline yet for this rider.</div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {events.map((event) => {
+            const Icon = event.icon;
+            return (
+              <div key={event.id} className="surface-3d flex items-start gap-3 border border-zinc-800 bg-zinc-950 p-3">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center border ${statusClasses[event.tone] ?? statusClasses.zinc}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-white">{event.title}</div>
+                  <div className="mt-0.5 truncate font-mono text-[10px] uppercase text-zinc-500">{event.detail}</div>
+                </div>
+                <div className="font-mono text-[9px] uppercase text-zinc-600">{fmtDate(event.at)} {fmtTime(event.at)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const EmployeeDetailView = ({
   employee,
   readings,
   config,
   routeSessions,
   routePoints,
+  fuelPriceHistory,
+  dailyReviews,
+  auditRows,
   onLoadRoutePoints,
   onBack,
   onUpdateEmployee,
@@ -2490,7 +3120,7 @@ const EmployeeDetailView = ({
   const months = [...new Set(sortReadingsAsc(readings).map((reading) => monthKey(reading.date)))];
   const filtered = sortReadingsAsc(readings).filter((reading) => monthKey(reading.date) === selectedMonth);
   const mileage = Number(employee.mileage ?? config.defaultMileage);
-  const monthlySummary = getMonthlySummary(filtered, selectedMonth, mileage, config.fuelPrice);
+  const monthlySummary = getMonthlySummary(filtered, selectedMonth, mileage, config.fuelPrice, fuelPriceHistory);
   const distance = monthlySummary.totalKm;
   const fuelUsed = monthlySummary.fuelUsed;
   const cost = monthlySummary.cost;
@@ -2561,13 +3191,13 @@ const EmployeeDetailView = ({
         {readings.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, selectedMonth), `${employee.username}_${selectedMonth}.csv`)}
+              onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, selectedMonth, fuelPriceHistory), `${employee.username}_${selectedMonth}.csv`)}
               className="mini-surface-3d flex items-center justify-center gap-1.5 border border-amber-400/40 bg-zinc-950 py-2.5 font-display text-sm tracking-widest text-amber-400 hover:bg-amber-400/10"
             >
               <FileDown className="h-3.5 w-3.5" /> MONTH CSV
             </button>
             <button
-              onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, null), `${employee.username}_all.csv`)}
+              onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, null, fuelPriceHistory), `${employee.username}_all.csv`)}
               className="mini-surface-3d flex items-center justify-center gap-1.5 border border-orange-500/40 bg-zinc-950 py-2.5 font-display text-sm tracking-widest text-orange-500 hover:bg-orange-500/10"
             >
               <Upload className="h-3.5 w-3.5" /> ALL TIME
@@ -2581,6 +3211,14 @@ const EmployeeDetailView = ({
           routePoints={routePoints}
           selectedMonth={selectedMonth}
           onLoadRoutePoints={onLoadRoutePoints}
+        />
+
+        <AdminActivityTimeline
+          employee={employee}
+          readings={readings}
+          routeSessions={routeSessions}
+          dailyReviews={dailyReviews}
+          auditRows={auditRows}
         />
 
         <div>
@@ -3164,6 +3802,8 @@ export default function App() {
   const [readings, setReadings] = useState([]);
   const [routeSessions, setRouteSessions] = useState([]);
   const [routePoints, setRoutePoints] = useState([]);
+  const [fuelPriceHistory, setFuelPriceHistory] = useState([]);
+  const [dailyReviews, setDailyReviews] = useState([]);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [queuedItems, setQueuedItems] = useState([]);
   const [admins, setAdmins] = useState([]);
@@ -3174,6 +3814,9 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [adminTab, setAdminTab] = useState('overview');
   const [riderTab, setRiderTab] = useState('today');
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const [locationPermission, setLocationPermission] = useState('unknown');
+  const [lastSyncAt, setLastSyncAt] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [photoModal, setPhotoModal] = useState({ open: false, url: '', path: '' });
   const [resetPinEmployee, setResetPinEmployee] = useState(null);
@@ -3191,6 +3834,7 @@ export default function App() {
   const routeWatchRef = useRef(null);
   const activeRouteRef = useRef(null);
   const lastRoutePointRef = useRef(null);
+  const markSynced = () => setLastSyncAt(new Date().toISOString());
 
   useEffect(() => {
     const timeout = toast ? window.setTimeout(() => setToast(null), 2600) : null;
@@ -3198,6 +3842,48 @@ export default function App() {
       if (timeout) window.clearTimeout(timeout);
     };
   }, [toast]);
+
+  useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
+    return () => {
+      window.removeEventListener('online', updateOnline);
+      window.removeEventListener('offline', updateOnline);
+    };
+  }, []);
+
+  useEffect(() => {
+    let permissionStatus;
+    let cancelled = false;
+
+    const loadLocationPermission = async () => {
+      if (!navigator.geolocation) {
+        setLocationPermission('unsupported');
+        return;
+      }
+
+      if (!navigator.permissions?.query) {
+        setLocationPermission('available');
+        return;
+      }
+
+      try {
+        permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+        if (cancelled) return;
+        setLocationPermission(permissionStatus.state);
+        permissionStatus.onchange = () => setLocationPermission(permissionStatus.state);
+      } catch {
+        if (!cancelled) setLocationPermission('available');
+      }
+    };
+
+    loadLocationPermission();
+    return () => {
+      cancelled = true;
+      if (permissionStatus) permissionStatus.onchange = null;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -3231,15 +3917,39 @@ export default function App() {
       setReadings([]);
       setRouteSessions([]);
       setRoutePoints([]);
+      setFuelPriceHistory([]);
+      setDailyReviews([]);
       setConfig(DEFAULT_CONFIG);
       return undefined;
     }
 
-    const unsubscribeEmployees = subscribeEmployees((rows) => setEmployees(rows));
-    const unsubscribeReadings = subscribeReadings((rows) => setReadings(rows));
-    const unsubscribeConfig = subscribeConfig((row) => setConfig(row));
+    const unsubscribeEmployees = subscribeEmployees((rows) => {
+      setEmployees(rows);
+      markSynced();
+    });
+    const unsubscribeReadings = subscribeReadings((rows) => {
+      setReadings(rows);
+      markSynced();
+    });
+    const unsubscribeConfig = subscribeConfig((row) => {
+      setConfig(row);
+      markSynced();
+    });
+    const unsubscribeFuelPriceHistory = subscribeFuelPriceHistory((rows) => {
+      setFuelPriceHistory(rows);
+      markSynced();
+    });
+    const unsubscribeDailyReviews = session.role === 'admin'
+      ? subscribeDailyReviews((rows) => {
+          setDailyReviews(rows);
+          markSynced();
+        })
+      : null;
     const unsubscribeRouteSessions = session.role === 'admin'
-      ? subscribeRouteSessions((rows) => setRouteSessions(rows))
+      ? subscribeRouteSessions((rows) => {
+          setRouteSessions(rows);
+          markSynced();
+        })
       : null;
     const unsubscribeRoutePoints = session.role === 'admin'
       ? subscribeRoutePoints((rows) => {
@@ -3250,6 +3960,7 @@ export default function App() {
               (left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime(),
             );
           });
+          markSynced();
         })
       : null;
 
@@ -3257,6 +3968,8 @@ export default function App() {
       unsubscribeEmployees?.();
       unsubscribeReadings?.();
       unsubscribeConfig?.();
+      unsubscribeFuelPriceHistory?.();
+      unsubscribeDailyReviews?.();
       unsubscribeRouteSessions?.();
       unsubscribeRoutePoints?.();
     };
@@ -3813,6 +4526,15 @@ export default function App() {
   const failedQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'failed').length;
   const syncingQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'syncing').length;
   const queuedRouteCount = riderQueuedRouteItems.length;
+  const appHealth = {
+    appVersion: APP_VERSION,
+    isOnline,
+    lastSyncAt,
+    locationPermission,
+    supabaseConfigured: isSupabaseConfigured,
+    gpsSupported: typeof navigator !== 'undefined' && Boolean(navigator.geolocation),
+    serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+  };
 
   const handleAdminLogin = async (email, password) => {
     setAuthLoading(true);
@@ -3942,6 +4664,18 @@ export default function App() {
     }
   };
 
+  const handleSaveDailyReview = async (review) => {
+    try {
+      await saveDailyReview(review);
+      await refreshAudit();
+      showToast('Daily close review saved.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Failed to save daily review.', 'error');
+      throw error;
+    }
+  };
+
   const handleInviteAdmin = async (email) => {
     try {
       await inviteAdmin(email, window.location.origin);
@@ -4062,6 +4796,9 @@ export default function App() {
             config={config}
             routeSessions={routeSessions}
             routePoints={routePoints}
+            fuelPriceHistory={fuelPriceHistory}
+            dailyReviews={dailyReviews}
+            auditRows={auditRows}
             onLoadRoutePoints={loadRoutePointsForSession}
             onBack={() => setSelectedEmployeeId(null)}
             onUpdateEmployee={handleSaveEmployee}
@@ -4077,7 +4814,13 @@ export default function App() {
                 employees={employees}
                 readingsByEmployee={readingsByEmployee}
                 config={config}
+                routeSessions={routeSessions}
+                routePoints={routePoints}
+                fuelPriceHistory={fuelPriceHistory}
+                dailyReviews={dailyReviews}
                 onSelectEmployee={setSelectedEmployeeId}
+                onPreviewPhoto={handlePreviewPhoto}
+                onSaveDailyReview={handleSaveDailyReview}
               />
             ) : null}
             {adminTab === 'employees' ? (
@@ -4109,18 +4852,31 @@ export default function App() {
                 onRefresh={() => refreshAudit(auditPage)}
               />
             ) : null}
-            {adminTab === 'settings' ? <AdminSettings config={config} onSave={handleSaveConfig} /> : null}
+            {adminTab === 'health' ? (
+              <AppHealthPanel
+                appHealth={appHealth}
+                queuedItems={queuedItems}
+                employees={employees}
+                readings={readings}
+                routeSessions={routeSessions}
+                routePoints={routePoints}
+                fuelPriceHistory={fuelPriceHistory}
+                dailyReviews={dailyReviews}
+              />
+            ) : null}
+            {adminTab === 'settings' ? <AdminSettings config={config} fuelPriceHistory={fuelPriceHistory} onSave={handleSaveConfig} /> : null}
           </>
         )}
 
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-orange-500/20 bg-black/95 shadow-2xl backdrop-blur">
-          <div className="grid grid-cols-6">
+          <div className="grid grid-cols-7">
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 },
               { id: 'employees', label: 'Riders', icon: Users },
               { id: 'routes', label: 'Routes', icon: Route },
               { id: 'admins', label: 'Admins', icon: Shield },
               { id: 'audit', label: 'Audit', icon: History },
+              { id: 'health', label: 'Health', icon: RefreshCw },
               { id: 'settings', label: 'Settings', icon: Settings },
             ].map((tab) => (
               <button

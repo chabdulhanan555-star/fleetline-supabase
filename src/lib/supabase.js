@@ -55,6 +55,8 @@ const demoListeners = {
   config: new Set(),
   routeSessions: new Set(),
   routePoints: new Set(),
+  fuelPriceHistory: new Set(),
+  dailyReviews: new Set(),
 };
 
 let riderSession = isSupabaseConfigured ? readStoredRiderSession() : null;
@@ -175,6 +177,17 @@ function createDemoStore() {
     photos: {},
     routeSessions: [],
     routePoints: [],
+    fuelPriceHistory: [
+      {
+        date: todayIso(),
+        fuelPrice: 280,
+        currency: 'PKR',
+        createdAt,
+        updatedAt: createdAt,
+        updatedBy: 'demo-admin',
+      },
+    ],
+    dailyReviews: [],
   };
 }
 
@@ -184,6 +197,8 @@ function readDemoStore() {
     const store = JSON.parse(raw);
     store.routeSessions ??= [];
     store.routePoints ??= [];
+    store.fuelPriceHistory ??= [];
+    store.dailyReviews ??= [];
     return store;
   }
 
@@ -256,6 +271,14 @@ function notifyDemoTable(table) {
   if (table === 'routePoints') {
     demoListeners.routePoints.forEach((listener) => listener([...store.routePoints]));
   }
+
+  if (table === 'fuelPriceHistory') {
+    demoListeners.fuelPriceHistory.forEach((listener) => listener([...store.fuelPriceHistory]));
+  }
+
+  if (table === 'dailyReviews') {
+    demoListeners.dailyReviews.forEach((listener) => listener([...store.dailyReviews]));
+  }
 }
 
 async function blobToDataUrl(blob) {
@@ -288,6 +311,14 @@ function demoSubscribe(table, callback) {
 
   if (table === 'routePoints') {
     callback([...store.routePoints]);
+  }
+
+  if (table === 'fuelPriceHistory') {
+    callback([...store.fuelPriceHistory]);
+  }
+
+  if (table === 'dailyReviews') {
+    callback([...store.dailyReviews]);
   }
 
   demoListeners[table].add(callback);
@@ -460,6 +491,31 @@ function mapRoutePoint(row) {
     speedMps: row.speed_mps === null ? null : Number(row.speed_mps),
     heading: row.heading === null ? null : Number(row.heading),
     createdAt: row.created_at,
+  };
+}
+
+function mapFuelPriceHistory(row) {
+  return {
+    date: row.date,
+    fuelPrice: Number(row.fuel_price),
+    currency: row.currency,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    updatedBy: row.updated_by,
+  };
+}
+
+function mapDailyReview(row) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    date: row.date,
+    status: row.status,
+    notes: row.notes ?? '',
+    reviewedBy: row.reviewed_by ?? null,
+    reviewedAt: row.reviewed_at ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -786,6 +842,98 @@ export async function deleteRouteSession(sessionId) {
   if (error) {
     throw error;
   }
+}
+
+export function subscribeFuelPriceHistory(callback) {
+  if (isDemoMode) {
+    return demoSubscribe('fuelPriceHistory', callback);
+  }
+
+  return subscribeTable({
+    table: 'fuel_price_history',
+    query: (client) =>
+      client
+        .from('fuel_price_history')
+        .select('date, fuel_price, currency, created_at, updated_at, updated_by')
+        .order('date', { ascending: false }),
+    callback: (rows) => callback((rows ?? []).map(mapFuelPriceHistory)),
+  });
+}
+
+export function subscribeDailyReviews(callback) {
+  if (isDemoMode) {
+    return demoSubscribe('dailyReviews', callback);
+  }
+
+  return subscribeTable({
+    table: 'daily_reviews',
+    query: (client) =>
+      client
+        .from('daily_reviews')
+        .select('id, employee_id, date, status, notes, reviewed_by, reviewed_at, created_at, updated_at')
+        .order('date', { ascending: false }),
+    callback: (rows) => callback((rows ?? []).map(mapDailyReview)),
+  });
+}
+
+export async function saveDailyReview(review) {
+  if (isDemoMode) {
+    const store = readDemoStore();
+    const now = new Date().toISOString();
+    const index = store.dailyReviews.findIndex(
+      (row) => row.employeeId === review.employeeId && row.date === review.date,
+    );
+    const nextReview = {
+      id: index >= 0 ? store.dailyReviews[index].id : crypto.randomUUID(),
+      employeeId: review.employeeId,
+      date: review.date,
+      status: review.status ?? 'pending_review',
+      notes: review.notes ?? '',
+      reviewedBy: demoSession?.role === 'admin' ? demoSession.user.id : null,
+      reviewedAt: ['approved', 'problem', 'paid'].includes(review.status) ? now : null,
+      createdAt: index >= 0 ? store.dailyReviews[index].createdAt : now,
+      updatedAt: now,
+    };
+
+    const before = index >= 0 ? store.dailyReviews[index] : null;
+    if (index >= 0) {
+      store.dailyReviews[index] = nextReview;
+    } else {
+      store.dailyReviews.unshift(nextReview);
+    }
+
+    appendDemoAudit(
+      store,
+      index >= 0 ? 'daily_review.update' : 'daily_review.create',
+      'daily_review',
+      `${nextReview.employeeId}:${nextReview.date}`,
+      before,
+      nextReview,
+    );
+    writeDemoStore(store);
+    notifyDemoTable('dailyReviews');
+    return nextReview;
+  }
+
+  const client = ensureAuthenticatedClient();
+  const payload = {
+    employee_id: review.employeeId,
+    date: review.date,
+    status: review.status ?? 'pending_review',
+    notes: review.notes ?? null,
+  };
+
+  const { data, error } = await client
+    .from('daily_reviews')
+    .upsert(payload, { onConflict: 'employee_id,date' })
+    .select('id, employee_id, date, status, notes, reviewed_by, reviewed_at, created_at, updated_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapDailyReview(data);
 }
 
 export function subscribeConfig(callback) {
@@ -1200,9 +1348,24 @@ export async function saveConfig(config) {
       updatedAt: new Date().toISOString(),
       updatedBy: demoSession?.role === 'admin' ? demoSession.user.id : null,
     };
+    const priceIndex = store.fuelPriceHistory.findIndex((row) => row.date === todayIso());
+    const priceRow = {
+      date: todayIso(),
+      fuelPrice: Number(config.fuelPrice),
+      currency: config.currency.trim().toUpperCase(),
+      createdAt: priceIndex >= 0 ? store.fuelPriceHistory[priceIndex].createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: demoSession?.role === 'admin' ? demoSession.user.id : null,
+    };
+    if (priceIndex >= 0) {
+      store.fuelPriceHistory[priceIndex] = priceRow;
+    } else {
+      store.fuelPriceHistory.unshift(priceRow);
+    }
     appendDemoAudit(store, 'config.update', 'config', '1', before, store.config);
     writeDemoStore(store);
     notifyDemoTable('config');
+    notifyDemoTable('fuelPriceHistory');
     return store.config;
   }
 
