@@ -264,6 +264,106 @@ const getMissingReadingAlerts = (employees, readingsByEmployee, date = today(), 
   return alerts;
 };
 
+const getDatesForMonth = (month, throughDate = today()) => {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const isCurrentMonth = month === monthKey(throughDate);
+  const endDay = isCurrentMonth ? Number(throughDate.slice(8, 10)) : new Date(year, monthNumber, 0).getDate();
+
+  return Array.from({ length: endDay }, (_, index) =>
+    `${year}-${String(monthNumber).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`,
+  );
+};
+
+const getRiderTodayStatus = (summary, now = new Date()) => {
+  if (summary.complete) {
+    return { label: 'Complete', tone: 'green' };
+  }
+
+  if (!summary.morning && isPastCutoff('morning', now)) {
+    return { label: 'Missing Morning', tone: 'red' };
+  }
+
+  if (summary.morning && !summary.evening && isPastCutoff('evening', now)) {
+    return { label: 'Missing Evening', tone: 'red' };
+  }
+
+  if (summary.morning && !summary.evening) {
+    return { label: 'In Market', tone: 'amber' };
+  }
+
+  return { label: 'Pending', tone: 'zinc' };
+};
+
+const statusClasses = {
+  green: 'border-green-500/30 bg-green-500/10 text-green-300',
+  amber: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  red: 'border-red-500/30 bg-red-500/10 text-red-300',
+  zinc: 'border-zinc-700 bg-zinc-900 text-zinc-300',
+};
+
+const getAttentionItems = (employees, readingsByEmployee, missingAlerts, date = today(), now = new Date()) => {
+  const alertItems = missingAlerts.map((alert) => ({
+    id: alert.id,
+    tone: 'red',
+    title: alert.title,
+    description: `${alert.employee.name} | ${alert.employee.bikePlate}`,
+    employee: alert.employee,
+    message: alert.message,
+    canWhatsApp: Boolean(normalizeWhatsAppPhone(alert.employee.phone)),
+  }));
+
+  const noPhoneItems = employees
+    .filter((employee) => employee.active !== false && !normalizeWhatsAppPhone(employee.phone))
+    .map((employee) => ({
+      id: `${employee.id}-phone`,
+      tone: 'amber',
+      title: 'Phone Missing',
+      description: `${employee.name} cannot receive WhatsApp reminders yet.`,
+      employee,
+      message: '',
+      canWhatsApp: false,
+    }));
+
+  const invalidItems = employees
+    .map((employee) => ({
+      employee,
+      summary: getDaySummary(readingsByEmployee[employee.id] || [], date),
+    }))
+    .filter(({ employee, summary }) => employee.active !== false && summary.invalid)
+    .map(({ employee }) => ({
+      id: `${employee.id}-invalid-reading`,
+      tone: 'red',
+      title: 'Check Odometer',
+      description: `${employee.name} has evening lower than morning today.`,
+      employee,
+      message: '',
+      canWhatsApp: false,
+    }));
+
+  const waitingItems = employees
+    .map((employee) => ({
+      employee,
+      summary: getDaySummary(readingsByEmployee[employee.id] || [], date),
+    }))
+    .filter(({ employee, summary }) =>
+      employee.active !== false &&
+      summary.morning &&
+      !summary.evening &&
+      !isPastCutoff('evening', now)
+    )
+    .map(({ employee }) => ({
+      id: `${employee.id}-in-market`,
+      tone: 'amber',
+      title: 'In Market',
+      description: `${employee.name} submitted Morning Start; Evening End pending.`,
+      employee,
+      message: '',
+      canWhatsApp: false,
+    }));
+
+  return [...alertItems, ...invalidItems, ...noPhoneItems, ...waitingItems];
+};
+
 const buildReadingsMap = (rows) =>
   rows.reduce((accumulator, row) => {
     accumulator[row.employeeId] = accumulator[row.employeeId] || [];
@@ -457,6 +557,33 @@ const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
         <div className={`font-display text-3xl leading-none ${textColor}`}>{value}</div>
         {unit ? <div className="font-mono text-[10px] uppercase text-zinc-500">{unit}</div> : null}
       </div>
+    </div>
+  );
+};
+
+const BarChart = ({ rows, valueLabel = (value) => fmtNum(Math.round(value)), emptyText = 'No chart data yet.' }) => {
+  const maxValue = Math.max(0, ...rows.map((row) => Number(row.value) || 0));
+
+  if (!rows.length || maxValue <= 0) {
+    return <div className="border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">{emptyText}</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {rows.map((row) => {
+        const width = Math.max(4, Math.round((Number(row.value) / maxValue) * 100));
+        return (
+          <div key={row.label}>
+            <div className="mb-1 flex items-center justify-between gap-3 font-mono text-[10px] uppercase">
+              <span className="truncate text-zinc-400">{row.label}</span>
+              <span className="text-amber-400">{valueLabel(row.value)}</span>
+            </div>
+            <div className="h-2 overflow-hidden bg-zinc-900">
+              <div className="h-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${width}%` }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -817,9 +944,11 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
   const [now, setNow] = useState(() => new Date());
   const thisMonth = monthKey(today());
   const alertDate = today();
+  const monthDates = getDatesForMonth(thisMonth, alertDate);
   const missingAlerts = getMissingReadingAlerts(employees, readingsByEmployee, alertDate, now);
   const morningAlerts = missingAlerts.filter((alert) => alert.type === 'morning').length;
   const eveningAlerts = missingAlerts.filter((alert) => alert.type === 'evening').length;
+  const attentionItems = getAttentionItems(employees, readingsByEmployee, missingAlerts, alertDate, now);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 60000);
@@ -832,6 +961,10 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
     );
     const mileage = Number(employee.mileage ?? config.defaultMileage);
     const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice);
+    const dailySummaries = monthDates.map((date) => getDaySummary(readingsByEmployee[employee.id] || [], date));
+    const incompleteDays = dailySummaries.filter((day) => day.morning || day.evening).filter((day) => !day.complete).length;
+    const todaySummary = getDaySummary(readingsByEmployee[employee.id] || [], alertDate);
+    const todayStatus = getRiderTodayStatus(todaySummary, now);
 
     return {
       employee,
@@ -839,9 +972,29 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       summary,
       monthlyKm: summary.totalKm,
       fuelCost: summary.cost,
-      didToday: monthlyReadings.some((reading) => reading.date === today()),
+      incompleteDays,
+      todaySummary,
+      todayStatus,
+      didToday: Boolean(todaySummary.morning || todaySummary.evening),
     };
   });
+
+  const leaderboardRows = [...monthlyReportRows].sort((left, right) => right.monthlyKm - left.monthlyKm);
+  const fuelLeaderboardRows = [...monthlyReportRows].sort((left, right) => right.fuelCost - left.fuelCost);
+
+  const todayTotals = monthlyReportRows.reduce(
+    (accumulator, row) => {
+      const mileage = Number(row.employee.mileage ?? config.defaultMileage);
+      const distance = row.todaySummary.complete ? row.todaySummary.distance : 0;
+      const fuel = mileage > 0 ? distance / mileage : 0;
+      accumulator.started += row.todaySummary.morning ? 1 : 0;
+      accumulator.completed += row.todaySummary.complete ? 1 : 0;
+      accumulator.km += distance;
+      accumulator.fuelCost += fuel * Number(config.fuelPrice);
+      return accumulator;
+    },
+    { started: 0, completed: 0, km: 0, fuelCost: 0 },
+  );
 
   const stats = monthlyReportRows.reduce(
     (accumulator, employee) => {
@@ -853,12 +1006,56 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
     { totalKm: 0, totalFuel: 0, activeToday: 0 },
   );
 
+  const dailyFleetRows = monthDates.slice(-10).map((date) => {
+    const km = employees.reduce((sum, employee) => {
+      const summary = getDaySummary(readingsByEmployee[employee.id] || [], date);
+      return sum + (summary.complete ? summary.distance : 0);
+    }, 0);
+
+    return {
+      label: new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      value: km,
+    };
+  });
+
+  const riderFuelRows = fuelLeaderboardRows
+    .filter((row) => row.fuelCost > 0)
+    .slice(0, 5)
+    .map((row) => ({ label: row.employee.name, value: row.fuelCost }));
+
+  const highestKmRider = leaderboardRows.find((row) => row.monthlyKm > 0);
+  const highestFuelRider = fuelLeaderboardRows.find((row) => row.fuelCost > 0);
+
   return (
     <div className="space-y-4 p-5">
       <div>
         <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Month Overview</div>
         <div className="font-display text-3xl leading-none text-white">
           {new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+        </div>
+      </div>
+
+      <div className="relative overflow-hidden border border-orange-500/30 bg-gradient-to-br from-orange-500/20 via-amber-500/10 to-black p-5">
+        <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-orange-500/20 blur-3xl" />
+        <div className="relative">
+          <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-300">// Today Operations</div>
+          <div className="font-display text-4xl leading-none text-white">
+            {todayTotals.completed}/{employees.length} Complete
+          </div>
+          <div className="mt-1 text-xs text-zinc-400">
+            {todayTotals.started} riders started today | {fmtNum(Math.round(todayTotals.km))} km completed
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="border border-orange-500/20 bg-black/40 p-3">
+              <div className="font-mono text-[9px] uppercase text-zinc-500">Today KM</div>
+              <div className="font-display text-3xl text-amber-400">{fmtNum(Math.round(todayTotals.km))}</div>
+            </div>
+            <div className="border border-orange-500/20 bg-black/40 p-3">
+              <div className="font-mono text-[9px] uppercase text-zinc-500">Today Fuel Cost</div>
+              <div className="font-display text-3xl text-orange-500">{fmtNum(Math.round(todayTotals.fuelCost))}</div>
+              <div className="font-mono text-[9px] uppercase text-zinc-500">{config.currency}</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -869,14 +1066,29 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         <StatCard label="Fuel Used" value={stats.totalFuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
       </div>
 
-      <div className={`border p-5 ${missingAlerts.length > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-green-500/30 bg-green-500/5'}`}>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="border border-zinc-800 bg-zinc-950 p-4">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Highest KM Rider</div>
+          <div className="mt-2 truncate font-display text-2xl text-amber-400">{highestKmRider?.employee.name || '-'}</div>
+          <div className="font-mono text-[10px] uppercase text-zinc-500">{fmtNum(Math.round(highestKmRider?.monthlyKm || 0))} km</div>
+        </div>
+        <div className="border border-zinc-800 bg-zinc-950 p-4">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Highest Fuel Cost</div>
+          <div className="mt-2 truncate font-display text-2xl text-orange-500">{highestFuelRider?.employee.name || '-'}</div>
+          <div className="font-mono text-[10px] uppercase text-zinc-500">
+            {config.currency} {fmtNum(Math.round(highestFuelRider?.fuelCost || 0))}
+          </div>
+        </div>
+      </div>
+
+      <div className={`border p-5 ${attentionItems.length > 0 ? 'border-red-500/30 bg-red-500/10' : 'border-green-500/30 bg-green-500/5'}`}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <div className={`font-mono text-[10px] uppercase tracking-widest ${missingAlerts.length > 0 ? 'text-red-300' : 'text-green-300'}`}>
-              // Missing Reading Alerts
+            <div className={`font-mono text-[10px] uppercase tracking-widest ${attentionItems.length > 0 ? 'text-red-300' : 'text-green-300'}`}>
+              // Attention Required
             </div>
             <div className="font-display text-3xl leading-none text-white">
-              {missingAlerts.length > 0 ? `${missingAlerts.length} Reminder${missingAlerts.length === 1 ? '' : 's'} Needed` : 'All Clear'}
+              {attentionItems.length > 0 ? `${attentionItems.length} Item${attentionItems.length === 1 ? '' : 's'} Need Attention` : 'All Clear'}
             </div>
             <div className="mt-1 text-xs text-zinc-500">
               Morning alerts start after {MISSING_READING_CUTOFFS.morning.label}. Evening alerts start after {MISSING_READING_CUTOFFS.evening.label}.
@@ -884,32 +1096,34 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
           </div>
           <div className="text-right font-mono text-[10px] uppercase text-zinc-500">
             {fmtDate(alertDate)}
-            <div className={missingAlerts.length > 0 ? 'text-red-300' : 'text-green-300'}>
+            <div className={attentionItems.length > 0 ? 'text-red-300' : 'text-green-300'}>
               {morningAlerts} morning | {eveningAlerts} evening
             </div>
           </div>
         </div>
 
-        {missingAlerts.length > 0 ? (
+        {attentionItems.length > 0 ? (
           <div className="space-y-2">
-            {missingAlerts.map((alert) => {
-              const Icon = READING_TYPES[alert.type].icon;
+            {attentionItems.map((alert) => {
+              const Icon = alert.type ? READING_TYPES[alert.type].icon : alert.title === 'Phone Missing' ? Phone : PackageCheck;
               const phone = normalizeWhatsAppPhone(alert.employee.phone);
               return (
-                <div key={alert.id} className="border border-red-500/20 bg-black/50 p-3">
+                <div key={alert.id} className={`border bg-black/50 p-3 ${alert.tone === 'red' ? 'border-red-500/20' : 'border-amber-500/20'}`}>
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center border border-red-500/30 bg-red-500/10">
-                      <Icon className="h-5 w-5 text-red-300" />
+                    <div className={`flex h-10 w-10 items-center justify-center border ${statusClasses[alert.tone]}`}>
+                      <Icon className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-white">{alert.employee.name}</div>
-                      <div className="font-mono text-[10px] uppercase text-red-200">{alert.title} after {alert.dueLabel}</div>
+                      <div className={`font-mono text-[10px] uppercase ${alert.tone === 'red' ? 'text-red-200' : 'text-amber-200'}`}>
+                        {alert.dueLabel ? `${alert.title} after ${alert.dueLabel}` : alert.title}
+                      </div>
                       <div className="mt-0.5 font-mono text-[10px] text-zinc-500">
-                        {alert.employee.bikePlate} | {alert.employee.phone || 'No phone saved'}
+                        {alert.description}
                       </div>
                     </div>
                   </div>
-                  {phone ? (
+                  {phone && alert.message ? (
                     <button
                       onClick={() => openWhatsApp(alert.employee.phone, alert.message)}
                       className="mt-3 flex w-full items-center justify-center gap-2 bg-[#25D366] py-2.5 font-display tracking-widest text-white transition-all hover:brightness-110"
@@ -918,7 +1132,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                     </button>
                   ) : (
                     <div className="mt-3 border border-amber-500/30 bg-amber-500/10 p-2 font-mono text-[10px] uppercase text-amber-300">
-                      Add this rider&apos;s phone number to enable WhatsApp reminders.
+                      {alert.title === 'Phone Missing' ? 'Add this rider&apos;s phone number to enable WhatsApp reminders.' : 'Review this item from the rider detail screen.'}
                     </div>
                   )}
                 </div>
@@ -927,7 +1141,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
           </div>
         ) : (
           <div className="border border-green-500/20 bg-black/40 p-3 font-mono text-[10px] uppercase text-green-300">
-            No missing rider readings at the current cutoff time.
+            No urgent rider issues at the current cutoff time.
           </div>
         )}
       </div>
@@ -942,14 +1156,71 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         </div>
       </div>
 
-      {employees.length > 0 ? (
-        <button
-          onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
-          className="flex w-full items-center justify-center gap-2 border border-amber-400/50 bg-zinc-950 py-3 font-display tracking-widest text-amber-400 hover:bg-amber-400/10"
-        >
-          <FileDown className="h-4 w-4" /> EXPORT FLEET REPORT
-        </button>
-      ) : null}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="border border-zinc-800 bg-zinc-950 p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Daily Fleet KM</div>
+              <div className="font-display text-2xl text-white">Last 10 Days</div>
+            </div>
+            <BarChart3 className="h-5 w-5 text-orange-500" />
+          </div>
+          <BarChart rows={dailyFleetRows} valueLabel={(value) => `${fmtNum(Math.round(value))} km`} />
+        </div>
+        <div className="border border-zinc-800 bg-zinc-950 p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Rider Fuel Cost</div>
+              <div className="font-display text-2xl text-white">Top 5 This Month</div>
+            </div>
+            <DollarSign className="h-5 w-5 text-amber-400" />
+          </div>
+          <BarChart
+            rows={riderFuelRows}
+            valueLabel={(value) => `${config.currency} ${fmtNum(Math.round(value))}`}
+            emptyText="No completed rider days yet."
+          />
+        </div>
+      </div>
+
+      <div className="border border-amber-400/30 bg-zinc-950 p-5">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">// Monthly Closing</div>
+            <div className="font-display text-3xl leading-none text-white">Review & Export</div>
+            <div className="mt-1 text-xs text-zinc-500">
+              Use this when month-end fuel payments are ready. Locking/final approval can be added later.
+            </div>
+          </div>
+          <FileDown className="h-5 w-5 text-amber-400" />
+        </div>
+        <div className="mb-4 grid grid-cols-3 gap-2 font-mono text-[10px] uppercase">
+          <div className="border border-zinc-800 bg-black p-3 text-zinc-500">
+            Riders
+            <div className="mt-1 font-display text-2xl text-white">{employees.length}</div>
+          </div>
+          <div className="border border-zinc-800 bg-black p-3 text-zinc-500">
+            Complete Days
+            <div className="mt-1 font-display text-2xl text-green-300">
+              {monthlyReportRows.reduce((sum, row) => sum + row.summary.completedDays, 0)}
+            </div>
+          </div>
+          <div className="border border-zinc-800 bg-black p-3 text-zinc-500">
+            Incomplete
+            <div className="mt-1 font-display text-2xl text-amber-300">
+              {monthlyReportRows.reduce((sum, row) => sum + row.incompleteDays, 0)}
+            </div>
+          </div>
+        </div>
+        {employees.length > 0 ? (
+          <button
+            onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth), `fleet_${thisMonth}.csv`)}
+            className="flex w-full items-center justify-center gap-2 border border-amber-400/50 bg-black py-3 font-display tracking-widest text-amber-400 hover:bg-amber-400/10"
+          >
+            <FileDown className="h-4 w-4" /> EXPORT MONTHLY CSV
+          </button>
+        ) : null}
+      </div>
 
       <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Monthly Report</div>
@@ -986,12 +1257,12 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       </div>
 
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Riders</div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Rider Leaderboard</div>
         {employees.length === 0 ? (
           <div className="border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders yet.</div>
         ) : (
           <div className="space-y-2">
-            {monthlyReportRows.map(({ employee, monthlyKm, didToday }) => {
+            {leaderboardRows.map(({ employee, monthlyKm, fuelCost, summary, incompleteDays, todayStatus }, index) => {
               return (
                 <button
                   key={employee.id}
@@ -999,18 +1270,28 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                   className="flex w-full items-center gap-3 border border-zinc-800 bg-zinc-950 p-3 transition-colors hover:border-orange-500"
                 >
                   <div className="relative flex h-11 w-11 items-center justify-center border border-orange-500/40 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
-                    <User className="h-5 w-5 text-orange-500" />
-                    {didToday ? <div className="pulse-dot absolute -right-1 -top-1 h-3 w-3 rounded-full bg-green-500"></div> : null}
+                    <div className="font-display text-xl text-orange-500">#{index + 1}</div>
                   </div>
                   <div className="flex-1 text-left">
-                    <div className="font-semibold text-white">{employee.name}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-semibold text-white">{employee.name}</div>
+                      <span className={`border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest ${statusClasses[todayStatus.tone]}`}>
+                        {todayStatus.label}
+                      </span>
+                    </div>
                     <div className="font-mono text-[10px] text-zinc-500">
                       {employee.bikePlate} | {employee.bikeModel || 'bike'}
+                    </div>
+                    <div className="mt-1 font-mono text-[9px] uppercase text-zinc-600">
+                      {summary.completedDays} complete days | {incompleteDays} incomplete
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-display text-xl leading-none text-amber-400">{fmtNum(monthlyKm)}</div>
                     <div className="font-mono text-[10px] uppercase text-zinc-500">km this mo</div>
+                    <div className="mt-1 font-mono text-[9px] uppercase text-orange-500">
+                      {config.currency} {fmtNum(Math.round(fuelCost))}
+                    </div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-zinc-600" />
                 </button>
