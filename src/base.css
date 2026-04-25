@@ -1,11 +1,82 @@
 @import "tailwindcss";
 
+:root {
+  --bg-main: #f7f3ea;
+  --bg-card: #fffdf7;
+
+  --text-main: #17202a;
+  --text-muted: #64748b;
+
+  --primary: #d97706;
+  --primary-dark: #92400e;
+  --primary-soft: #fef3c7;
+
+  --accent: #0f766e;
+  --accent-soft: #ccfbf1;
+
+  --success: #15803d;
+  --warning: #eab308;
+  --danger: #dc2626;
+  --info: #2563eb;
+
+  --border: #e7decf;
+
+  --ops-bg: #0b0f14;
+  --ops-bg-deep: #05080c;
+  --ops-panel: #111820;
+  --ops-panel-strong: #17202a;
+  --ops-panel-soft: #1f2b36;
+  --ops-border: rgba(231, 222, 207, 0.14);
+}
+
+@theme {
+  --color-black: var(--ops-bg);
+  --color-white: var(--bg-card);
+
+  --color-orange-500: var(--primary);
+  --color-orange-600: #b45309;
+  --color-orange-700: var(--primary-dark);
+
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #f59e0b;
+  --color-amber-500: #d97706;
+  --color-amber-600: #b45309;
+  --color-amber-700: #92400e;
+
+  --color-teal-500: var(--accent);
+  --color-teal-600: #0f766e;
+  --color-emerald-300: #86efac;
+  --color-emerald-400: #4ade80;
+  --color-green-300: #86efac;
+  --color-green-500: var(--success);
+
+  --color-yellow-400: var(--warning);
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: var(--danger);
+  --color-blue-500: var(--info);
+
+  --color-zinc-950: var(--ops-panel);
+  --color-zinc-900: var(--ops-panel-strong);
+  --color-zinc-800: var(--ops-panel-soft);
+  --color-zinc-700: #334155;
+  --color-zinc-600: #475569;
+  --color-zinc-500: var(--text-muted);
+  --color-zinc-400: #94a3b8;
+  --color-zinc-300: #cbd5e1;
+}
+
 html, body, #root {
   min-height: 100%;
 }
 
 body {
   margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(217, 119, 6, 0.16), transparent 34rem),
+    linear-gradient(135deg, var(--ops-bg-deep), var(--ops-bg));
+  color: var(--bg-card);
 }
 
 button,

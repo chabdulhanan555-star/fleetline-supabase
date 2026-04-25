@@ -452,25 +452,31 @@ const ThemeStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700;800&display=swap');
     :root {
-      --fleet-orange: #ff6b1a;
-      --fleet-gold: #f4b41a;
-      --fleet-black: #050505;
-      --fleet-panel: #111111;
-      --fleet-border: rgba(255, 140, 50, 0.22);
+      --fleet-orange: var(--primary);
+      --fleet-gold: var(--warning);
+      --fleet-black: var(--ops-bg);
+      --fleet-panel: var(--ops-panel);
+      --fleet-border: rgba(217, 119, 6, 0.24);
     }
     .font-display { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.02em; }
     .font-mono { font-family: 'JetBrains Mono', monospace; }
     .font-body { font-family: 'Manrope', sans-serif; }
     .grid-bg {
       background-image:
-        linear-gradient(rgba(255,140,50,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,140,50,0.04) 1px, transparent 1px);
-      background-size: 32px 32px;
+        radial-gradient(circle at 18% 8%, rgba(217, 119, 6, 0.16), transparent 24rem),
+        radial-gradient(circle at 92% 18%, rgba(15, 118, 110, 0.12), transparent 22rem),
+        linear-gradient(rgba(217,119,6,0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(217,119,6,0.045) 1px, transparent 1px),
+        linear-gradient(135deg, var(--ops-bg-deep), var(--ops-bg));
+      background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px, 100% 100%;
     }
-    .ticker-border { background: linear-gradient(90deg, #ff6b1a, #f4b41a, #ff6b1a); }
+    .ticker-border { background: linear-gradient(90deg, var(--primary-dark), var(--primary), var(--warning), var(--accent)); }
     .glow-orange {
-      box-shadow: 0 0 24px -4px rgba(255,107,26,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+      box-shadow: 0 0 24px -4px rgba(217,119,6,0.48), inset 0 1px 0 rgba(255,253,247,0.14);
     }
+    .bg-black\\/95, .bg-black\\/80, .bg-black\\/50, .bg-black\\/40 { backdrop-filter: blur(16px); }
+    .border-zinc-800, .border-zinc-900 { border-color: var(--ops-border); }
+    .shadow-2xl { box-shadow: 0 24px 60px rgba(0,0,0,0.38); }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     @keyframes pulse-orange {
