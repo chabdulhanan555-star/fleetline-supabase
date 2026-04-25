@@ -916,7 +916,7 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
               <button
                 onClick={handleRiderSubmit}
                 disabled={loading || !username.trim() || pin.length !== 4}
-                className="glow-orange w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display text-lg tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
+                className="button-3d button-3d-primary glow-orange w-full py-3 font-display text-lg tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading ? 'VERIFYING...' : 'ENTER DASHBOARD ->'}
               </button>
@@ -962,7 +962,7 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
               <button
                 onClick={() => onAdminLogin(email, password)}
                 disabled={loading || !email || !password}
-                className="w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display text-lg tracking-widest text-black glow-orange disabled:cursor-not-allowed disabled:opacity-40"
+                className="button-3d button-3d-primary glow-orange w-full py-3 font-display text-lg tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading ? 'AUTHENTICATING...' : 'ADMIN AUTHENTICATE ->'}
               </button>
