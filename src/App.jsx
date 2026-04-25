@@ -765,6 +765,15 @@ const ThemeStyles = () => (
         rgba(5,8,12,0.72);
       box-shadow: inset 0 1px 0 rgba(255,253,247,0.04);
     }
+    .ledger-rider-avatar {
+      background:
+        linear-gradient(145deg, rgba(217,119,6,0.34), rgba(146,64,14,0.28)),
+        rgba(5,8,12,0.78);
+      box-shadow:
+        inset 0 1px 0 rgba(255,253,247,0.16),
+        0 12px 28px rgba(0,0,0,0.28),
+        0 0 24px rgba(217,119,6,0.12);
+    }
     @media (hover: hover) and (pointer: fine) {
       .lift-3d:hover,
       .surface-3d:hover {
@@ -1806,8 +1815,8 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
         ) : (
           <div className="table-3d overflow-hidden border border-orange-500/20 bg-black/65">
             <div className="overflow-x-auto">
-              <div className="min-w-[640px]">
-                <div className="grid grid-cols-[1.4fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] border-b border-orange-500/15 bg-orange-500/10 px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
+              <div className="min-w-[760px]">
+                <div className="grid grid-cols-[1.8fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] border-b border-orange-500/15 bg-orange-500/10 px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
                   <div>Rider</div>
                   <div className="text-right">Days</div>
                   <div className="text-right">KM</div>
@@ -1826,11 +1835,24 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
                       <button
                         key={employee.id}
                         onClick={() => onSelectEmployee(employee.id)}
-                        className="ledger-row-3d grid w-full grid-cols-[1.4fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] items-center gap-2 border-b border-white/5 px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-orange-500/10"
+                        className="ledger-row-3d grid w-full grid-cols-[1.8fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] items-center gap-3 border-b border-white/5 px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-orange-500/10"
                       >
-                        <div className="min-w-0">
-                          <div className="truncate font-semibold text-white">{employee.name}</div>
-                          <div className="truncate font-mono text-[9px] uppercase text-zinc-500">{employee.bikePlate || 'no plate'}</div>
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="ledger-rider-avatar flex h-11 w-11 shrink-0 items-center justify-center border border-orange-500/35">
+                            <User className="h-5 w-5 text-orange-500" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold text-white">{employee.name}</div>
+                            <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">@{employee.username}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[9px] uppercase text-zinc-500">
+                              <span className="flex items-center gap-1">
+                                <Bike className="h-3 w-3 text-amber-500" /> {employee.bikePlate || 'no plate'}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Fuel className="h-3 w-3 text-amber-500" /> {employee.mileage ?? config.defaultMileage} km/L
+                              </span>
+                            </div>
+                          </div>
                         </div>
                         <div className="text-right">
                           <div className={`font-display text-lg leading-none ${incomplete ? 'text-amber-300' : 'text-green-300'}`}>
