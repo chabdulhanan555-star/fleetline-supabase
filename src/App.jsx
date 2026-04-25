@@ -43,6 +43,7 @@ import {
   appendRoutePoints,
   deleteEmployee,
   deleteReading,
+  deleteRouteSession,
   finishRouteSession,
   getCurrentSession,
   getSignedPhotoUrl,
@@ -1105,23 +1106,23 @@ const RouteMap = ({ points, session, employee }) => {
   );
 };
 
-const RouteSessionCard = ({ session, employee, points, selected, onSelect }) => {
+const RouteSessionCard = ({ session, employee, points, selected, deleting, onSelect, onDelete }) => {
   const stale = session.status === 'active' && (!session.lastPointAt || Date.now() - new Date(session.lastPointAt).getTime() > ROUTE_STALE_AFTER_MS);
   const distance = session.totalDistanceM || calculateRouteDistanceM(points);
   const tone = session.status === 'active' ? (stale ? 'amber' : 'green') : 'zinc';
 
   return (
-    <button
-      onClick={onSelect}
-      className={`surface-3d lift-3d w-full border p-3 text-left transition-colors ${
-        selected ? 'border-orange-500 bg-orange-500/10' : 'border-zinc-800 bg-zinc-950 hover:border-orange-500/50'
-      }`}
-    >
+    <div className={`surface-3d lift-3d border p-3 transition-colors ${
+      selected ? 'border-orange-500 bg-orange-500/10' : 'border-zinc-800 bg-zinc-950 hover:border-orange-500/50'
+    }`}>
       <div className="flex items-start gap-3">
-        <div className={`flex h-10 w-10 items-center justify-center border ${statusClasses[tone]}`}>
+        <button
+          onClick={onSelect}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center border ${statusClasses[tone]}`}
+        >
           <Route className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 flex-1">
+        </button>
+        <button onClick={onSelect} className="min-w-0 flex-1 text-left">
           <div className="truncate font-semibold text-white">{employee?.name || 'Unknown rider'}</div>
           <div className="font-mono text-[10px] uppercase text-zinc-500">
             {fmtDate(session.date)} | {session.status}
@@ -1129,12 +1130,19 @@ const RouteSessionCard = ({ session, employee, points, selected, onSelect }) => 
           <div className="mt-1 font-mono text-[9px] uppercase text-zinc-600">
             {points.length} points | {fmtDistance(distance)}
           </div>
-        </div>
+        </button>
         {session.status === 'active' ? (
           <div className={`h-2.5 w-2.5 rounded-full ${stale ? 'bg-amber-400' : 'bg-green-400 pulse-dot'}`} />
         ) : null}
+        <button
+          onClick={onDelete}
+          disabled={deleting}
+          className="mini-surface-3d border border-red-500/30 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {deleting ? 'DELETING' : 'DELETE'}
+        </button>
       </div>
-    </button>
+    </div>
   );
 };
 
@@ -1854,7 +1862,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
   );
 };
 
-const AdminRoutesPanel = ({ employees, routeSessions, routePoints, onLoadRoutePoints }) => {
+const AdminRoutesPanel = ({ employees, routeSessions, routePoints, deletingRouteId, onLoadRoutePoints, onDeleteRouteSession }) => {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
   const rows = useMemo(
@@ -1886,6 +1894,21 @@ const AdminRoutesPanel = ({ employees, routeSessions, routePoints, onLoadRoutePo
       onLoadRoutePoints?.(selectedSession.id);
     }
   }, [selectedSession?.id]);
+
+  const handleDeleteRoute = async (session, employee) => {
+    const label = `${employee?.name || 'this rider'} route on ${fmtDate(session.date)}`;
+    const shouldDelete = window.confirm(
+      `Delete ${label}? This removes the route session and all GPS points. Odometer readings and photos will stay safe.`,
+    );
+
+    if (!shouldDelete) return;
+
+    await onDeleteRouteSession(session.id);
+    if (selectedSessionId === session.id) {
+      const nextSession = rows.find((row) => row.id !== session.id) ?? null;
+      setSelectedSessionId(nextSession?.id ?? null);
+    }
+  };
 
   return (
     <div className="dashboard-3d space-y-4 p-5">
@@ -1945,7 +1968,9 @@ const AdminRoutesPanel = ({ employees, routeSessions, routePoints, onLoadRoutePo
                   employee={employee}
                   points={points}
                   selected={selectedSession?.id === session.id}
+                  deleting={deletingRouteId === session.id}
                   onSelect={() => setSelectedSessionId(session.id)}
+                  onDelete={() => handleDeleteRoute(session, employee)}
                 />
               );
             })}
@@ -3131,6 +3156,7 @@ export default function App() {
   const [photoModal, setPhotoModal] = useState({ open: false, url: '', path: '' });
   const [resetPinEmployee, setResetPinEmployee] = useState(null);
   const [resetPinBusy, setResetPinBusy] = useState(false);
+  const [deletingRouteId, setDeletingRouteId] = useState(null);
   const [routeTracking, setRouteTracking] = useState({
     status: 'idle',
     sessionId: null,
@@ -3845,6 +3871,23 @@ export default function App() {
     }
   };
 
+  const handleDeleteRouteSession = async (sessionId) => {
+    setDeletingRouteId(sessionId);
+    try {
+      await deleteRouteSession(sessionId);
+      setRouteSessions((current) => current.filter((sessionRow) => sessionRow.id !== sessionId));
+      setRoutePoints((current) => current.filter((point) => point.sessionId !== sessionId));
+      await refreshAudit();
+      showToast('Route session deleted.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Failed to delete route session.', 'error');
+      throw error;
+    } finally {
+      setDeletingRouteId(null);
+    }
+  };
+
   const handleResetPin = async (employee, nextPin) => {
     if (!/^\d{4}$/.test(String(nextPin ?? ''))) {
       showToast('PIN must be exactly 4 digits.', 'error');
@@ -4028,7 +4071,9 @@ export default function App() {
                 employees={employees}
                 routeSessions={routeSessions}
                 routePoints={routePoints}
+                deletingRouteId={deletingRouteId}
                 onLoadRoutePoints={loadRoutePointsForSession}
+                onDeleteRouteSession={handleDeleteRouteSession}
               />
             ) : null}
             {adminTab === 'admins' ? <AdminsPanel admins={admins} onRefresh={refreshAdmins} onInvite={handleInviteAdmin} /> : null}

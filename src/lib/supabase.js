@@ -760,6 +760,34 @@ export async function listRoutePointsForSession(sessionId) {
   return (data ?? []).map(mapRoutePoint);
 }
 
+export async function deleteRouteSession(sessionId) {
+  if (isDemoMode) {
+    const store = readDemoStore();
+    const before = store.routeSessions.find((row) => row.id === sessionId);
+    store.routeSessions = store.routeSessions.filter((row) => row.id !== sessionId);
+    store.routePoints = store.routePoints.filter((row) => row.sessionId !== sessionId);
+
+    appendDemoAudit(store, 'route.delete', 'route_session', sessionId, before ?? null, {
+      deleted: true,
+      removedPoints: true,
+    });
+    writeDemoStore(store);
+    notifyDemoTable('routeSessions');
+    notifyDemoTable('routePoints');
+    return;
+  }
+
+  const client = ensureAuthenticatedClient();
+  const { error } = await client
+    .from('route_sessions')
+    .delete()
+    .eq('id', sessionId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export function subscribeConfig(callback) {
   if (isDemoMode) {
     return demoSubscribe('config', callback);
