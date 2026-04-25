@@ -1018,6 +1018,26 @@ export async function startRouteSession(session) {
       throw existingError;
     }
 
+    if (existing.status !== 'active') {
+      const { data: recovered, error: recoverError } = await client
+        .from('route_sessions')
+        .update({
+          start_reading_id: session.startReadingId ?? existing.start_reading_id,
+          end_reading_id: null,
+          status: 'active',
+          ended_at: null,
+        })
+        .eq('id', existing.id)
+        .select(queryColumns)
+        .single();
+
+      if (recoverError) {
+        throw recoverError;
+      }
+
+      return mapRouteSession(recovered);
+    }
+
     return mapRouteSession(existing);
   }
 

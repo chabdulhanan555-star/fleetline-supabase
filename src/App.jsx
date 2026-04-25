@@ -229,6 +229,9 @@ const shouldRecordRoutePoint = (lastPoint, nextPoint) => {
   return movedM >= ROUTE_MIN_DISTANCE_M || elapsedMs >= ROUTE_SAMPLE_INTERVAL_MS;
 };
 
+const isInactiveRouteError = (error) =>
+  String(error?.message ?? error ?? '').toLowerCase().includes('route session is not active');
+
 const isLikelyNetworkError = (error) => {
   const text = String(error?.message ?? error ?? '').toLowerCase();
   return text.includes('fetch') || text.includes('network') || text.includes('failed');
@@ -3281,22 +3284,83 @@ export default function App() {
     }
   };
 
+  const recoverActiveRouteSession = async (route) => {
+    if (!route) {
+      return null;
+    }
+
+    const recoveredRoute = await queueOrSaveRouteStart(route);
+    const nextRoute = {
+      ...route,
+      ...recoveredRoute,
+      status: 'active',
+      endedAt: null,
+      endReadingId: null,
+      lastPoint: route.lastPoint ?? recoveredRoute?.lastPoint ?? null,
+      pointCount: Math.max(route.pointCount ?? 0, recoveredRoute?.pointCount ?? 0),
+      totalDistanceM: Math.max(route.totalDistanceM ?? 0, recoveredRoute?.totalDistanceM ?? 0),
+    };
+
+    activeRouteRef.current = nextRoute;
+    writeStoredActiveRoute(nextRoute);
+    syncRouteTrackingState(nextRoute, 'active', 'Route tracking recovered.');
+    return nextRoute;
+  };
+
   const recordRoutePoint = async (point) => {
     const previousPoint = lastRoutePointRef.current;
     const distanceDelta = previousPoint ? distanceMeters(previousPoint, point) : 0;
-    lastRoutePointRef.current = point;
-    const nextRoute = updateActiveRoute({
+    const currentRoute = activeRouteRef.current;
+    const nextRoute = {
+      ...currentRoute,
       lastPoint: point,
       lastPointAt: point.recordedAt,
-      pointCount: (activeRouteRef.current?.pointCount ?? 0) + 1,
-      totalDistanceM: (activeRouteRef.current?.totalDistanceM ?? 0) + distanceDelta,
-    });
+      pointCount: (currentRoute?.pointCount ?? 0) + 1,
+      totalDistanceM: (currentRoute?.totalDistanceM ?? 0) + distanceDelta,
+    };
 
     try {
       await queueOrSaveRoutePoints([point]);
+      lastRoutePointRef.current = point;
+      updateActiveRoute(nextRoute);
     } catch (error) {
+      if (isInactiveRouteError(error)) {
+        try {
+          const recoveredRoute = await recoverActiveRouteSession(currentRoute);
+          const recoveredPoint = {
+            ...point,
+            sessionId: recoveredRoute?.id ?? point.sessionId,
+          };
+          await queueOrSaveRoutePoints([recoveredPoint]);
+          lastRoutePointRef.current = recoveredPoint;
+          updateActiveRoute({
+            ...nextRoute,
+            id: recoveredRoute?.id ?? nextRoute.id,
+            sessionId: recoveredRoute?.id ?? nextRoute.sessionId,
+            lastPoint: recoveredPoint,
+            lastPointAt: recoveredPoint.recordedAt,
+          });
+          return;
+        } catch (recoverError) {
+          console.error(recoverError);
+          stopRouteWatch();
+          writeStoredActiveRoute(null);
+          activeRouteRef.current = null;
+          lastRoutePointRef.current = null;
+          setRouteTracking({
+            status: 'error',
+            sessionId: null,
+            message: 'GPS session was closed on the server. Submit Evening End, then start a fresh route tomorrow.',
+            pointCount: currentRoute?.pointCount ?? 0,
+            lastPointAt: currentRoute?.lastPointAt ?? null,
+            totalDistanceM: currentRoute?.totalDistanceM ?? 0,
+          });
+          return;
+        }
+      }
+
       console.error(error);
-      syncRouteTrackingState(nextRoute, 'error', error.message || 'Failed to save GPS point.');
+      syncRouteTrackingState(currentRoute, 'error', error.message || 'Failed to save GPS point.');
     }
   };
 
@@ -3333,10 +3397,30 @@ export default function App() {
 
     const existingRoute = activeRouteRef.current ?? readStoredActiveRoute();
     if (existingRoute?.employeeId === employee.id && existingRoute?.date === date && existingRoute?.status === 'active') {
-      activeRouteRef.current = existingRoute;
-      lastRoutePointRef.current = existingRoute.lastPoint ?? null;
-      syncRouteTrackingState(existingRoute, 'active', 'Route tracking already active.');
-      startRouteWatcher(existingRoute);
+      setRouteTracking((current) => ({
+        ...current,
+        status: 'requesting',
+        message: 'Recovering existing route session.',
+      }));
+      try {
+        const recoveredRoute = await recoverActiveRouteSession(existingRoute);
+        lastRoutePointRef.current = recoveredRoute?.lastPoint ?? existingRoute.lastPoint ?? null;
+        syncRouteTrackingState(recoveredRoute ?? existingRoute, 'active', 'Route tracking already active.');
+        startRouteWatcher(recoveredRoute ?? existingRoute);
+      } catch (error) {
+        console.error(error);
+        writeStoredActiveRoute(null);
+        activeRouteRef.current = null;
+        lastRoutePointRef.current = null;
+        setRouteTracking({
+          status: 'error',
+          sessionId: null,
+          message: 'Could not recover GPS route tracking. Submit Evening End normally; tomorrow will start fresh.',
+          pointCount: existingRoute.pointCount ?? 0,
+          lastPointAt: existingRoute.lastPointAt ?? null,
+          totalDistanceM: existingRoute.totalDistanceM ?? 0,
+        });
+      }
       return;
     }
 
@@ -3518,25 +3602,6 @@ export default function App() {
     return employees.find((employee) => employee.id === session.employee.id) || session.employee;
   }, [employees, session]);
 
-  useEffect(() => {
-    if (session?.role !== 'rider' || !riderEmployee) {
-      stopRouteWatch();
-      return undefined;
-    }
-
-    const storedRoute = readStoredActiveRoute();
-    if (storedRoute?.employeeId === riderEmployee.id && storedRoute?.date === today() && storedRoute?.status === 'active') {
-      activeRouteRef.current = storedRoute;
-      lastRoutePointRef.current = storedRoute.lastPoint ?? null;
-      syncRouteTrackingState(storedRoute, 'active', 'Route tracking active.');
-      startRouteWatcher(storedRoute);
-    }
-
-    return () => {
-      stopRouteWatch();
-    };
-  }, [session?.role, riderEmployee?.id]);
-
   const riderQueuedReadings = useMemo(() => {
     if (!riderEmployee) return [];
     return queuedItems
@@ -3560,6 +3625,65 @@ export default function App() {
     if (!riderEmployee) return [];
     return [...(readingsByEmployee[riderEmployee.id] || []), ...riderQueuedReadings];
   }, [readingsByEmployee, riderEmployee, riderQueuedReadings]);
+
+  useEffect(() => {
+    if (session?.role !== 'rider' || !riderEmployee) {
+      stopRouteWatch();
+      return undefined;
+    }
+
+    const todaySummary = getDaySummary(riderReadings, today());
+    const storedRoute = readStoredActiveRoute();
+
+    if (todaySummary.evening) {
+      if (storedRoute?.employeeId === riderEmployee.id && storedRoute?.date === today()) {
+        writeStoredActiveRoute(null);
+      }
+      stopRouteWatch();
+      activeRouteRef.current = null;
+      lastRoutePointRef.current = null;
+      return undefined;
+    }
+
+    if (storedRoute?.employeeId === riderEmployee.id && storedRoute?.date === today() && storedRoute?.status === 'active') {
+      let cancelled = false;
+
+      const recoverStoredRoute = async () => {
+        try {
+          const recoveredRoute = await recoverActiveRouteSession(storedRoute);
+          if (cancelled) return;
+          lastRoutePointRef.current = recoveredRoute?.lastPoint ?? storedRoute.lastPoint ?? null;
+          syncRouteTrackingState(recoveredRoute ?? storedRoute, 'active', 'Route tracking active.');
+          startRouteWatcher(recoveredRoute ?? storedRoute);
+        } catch (error) {
+          console.error(error);
+          if (cancelled) return;
+          writeStoredActiveRoute(null);
+          activeRouteRef.current = null;
+          lastRoutePointRef.current = null;
+          setRouteTracking({
+            status: 'error',
+            sessionId: null,
+            message: 'Could not recover GPS route tracking. Submit Evening End normally; tomorrow will start fresh.',
+            pointCount: storedRoute.pointCount ?? 0,
+            lastPointAt: storedRoute.lastPointAt ?? null,
+            totalDistanceM: storedRoute.totalDistanceM ?? 0,
+          });
+        }
+      };
+
+      recoverStoredRoute();
+
+      return () => {
+        cancelled = true;
+        stopRouteWatch();
+      };
+    }
+
+    return () => {
+      stopRouteWatch();
+    };
+  }, [session?.role, riderEmployee?.id, riderReadings]);
 
   const riderQueuedRouteItems = useMemo(() => {
     if (!riderEmployee) return [];
