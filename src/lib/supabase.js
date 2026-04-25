@@ -1,17 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const FALLBACK_SUPABASE_URL = 'https://chwspnooeooddezsfcdp.supabase.co';
+const FALLBACK_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNod3Nwbm9vZW9vZGRlenNmY2RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzA2MTMsImV4cCI6MjA5MjYwNjYxM30.ZkIrn9MP236kSJxMwXovblZOwGBVbX9FnBRIx9LOz2A';
+const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const rawSupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const RIDER_SESSION_KEY = 'fleetline.rider-session.v1';
 const DEMO_STORE_KEY = 'fleetline.demo-store.v1';
 const DEMO_SESSION_KEY = 'fleetline.demo-session.v1';
-
-const normalizedSupabaseUrl = String(supabaseUrl || '').trim();
-const normalizedSupabaseAnonKey = String(supabaseAnonKey || '').trim();
 const hasPlaceholderText = (value) => {
   const text = String(value || '').trim().toLowerCase();
   return !text || text.includes('your-') || text.includes('your ') || text.includes('placeholder');
 };
+const supabaseUrl = hasPlaceholderText(rawSupabaseUrl) ? FALLBACK_SUPABASE_URL : rawSupabaseUrl;
+const supabaseAnonKey = hasPlaceholderText(rawSupabaseAnonKey) ? FALLBACK_SUPABASE_ANON_KEY : rawSupabaseAnonKey;
+const normalizedSupabaseUrl = String(supabaseUrl || '').trim();
+const normalizedSupabaseAnonKey = String(supabaseAnonKey || '').trim();
 const hasValidSupabaseUrl =
   /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(normalizedSupabaseUrl) ||
   /^https:\/\/[a-z0-9-]+\.supabase\.in$/.test(normalizedSupabaseUrl);
