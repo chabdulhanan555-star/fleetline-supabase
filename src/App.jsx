@@ -639,7 +639,7 @@ const BrandHeader = ({ onLogout, userName, subtitle }) => (
           </div>
           <button
             onClick={onLogout}
-            className="flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 transition-colors hover:border-orange-500/60 hover:bg-orange-500/10"
+            className="mini-surface-3d flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 transition-colors hover:border-orange-500/60 hover:bg-orange-500/10"
           >
             <LogOut className="h-4 w-4 text-orange-500" />
           </button>
@@ -678,7 +678,7 @@ const BarChart = ({ rows, valueLabel = (value) => fmtNum(Math.round(value)), emp
   const maxValue = Math.max(0, ...rows.map((row) => Number(row.value) || 0));
 
   if (!rows.length || maxValue <= 0) {
-    return <div className="border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">{emptyText}</div>;
+    return <div className="surface-3d border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">{emptyText}</div>;
   }
 
   return (
@@ -1030,7 +1030,7 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
       ) : null}
 
       <div className="mt-6 flex gap-2">
-        <button onClick={onCancel} className="flex-1 border border-zinc-800 bg-zinc-900 py-3 font-display tracking-widest text-zinc-400">
+        <button onClick={onCancel} className="mini-surface-3d flex-1 border border-zinc-800 bg-zinc-900 py-3 font-display tracking-widest text-zinc-400">
           CANCEL
         </button>
         <button onClick={handleSave} className="glow-orange flex-1 bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black">
@@ -1044,7 +1044,7 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
               onDelete(employee.id);
             }
           }}
-          className="mt-3 flex w-full items-center justify-center gap-2 border border-red-500/40 py-2.5 font-display tracking-widest text-red-400 hover:bg-red-500/10"
+          className="mini-surface-3d mt-3 flex w-full items-center justify-center gap-2 border border-red-500/40 py-2.5 font-display tracking-widest text-red-400 hover:bg-red-500/10"
         >
           <Trash2 className="h-4 w-4" /> DELETE RIDER
         </button>
@@ -1338,7 +1338,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Monthly Report</div>
         {monthlyReportRows.length === 0 ? (
-          <div className="border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders to report yet.</div>
+          <div className="surface-3d border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders to report yet.</div>
         ) : (
           <div className="table-3d overflow-hidden border border-zinc-800 bg-zinc-950">
             <div className="grid grid-cols-[1.2fr_0.8fr_1fr] border-b border-zinc-800 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-500">
@@ -1372,7 +1372,7 @@ const AdminOverview = ({ employees, readingsByEmployee, config, onSelectEmployee
       <div>
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Rider Leaderboard</div>
         {employees.length === 0 ? (
-          <div className="border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders yet.</div>
+          <div className="surface-3d border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No riders yet.</div>
         ) : (
           <div className="space-y-2">
             {leaderboardRows.map(({ employee, monthlyKm, fuelCost, summary, incompleteDays, todayStatus }, index) => {
@@ -1422,7 +1422,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
   const [editing, setEditing] = useState(null);
 
   return (
-    <div className="p-5">
+    <div className="dashboard-3d p-5">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Fleet Roster</div>
@@ -1440,7 +1440,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
       </div>
 
       {employees.length === 0 ? (
-        <div className="border border-dashed border-zinc-800 p-10 text-center">
+        <div className="surface-3d border border-dashed border-zinc-800 p-10 text-center">
           <Users className="mx-auto mb-3 h-12 w-12 text-zinc-700" />
           <div className="mb-1 font-display text-2xl text-white">No Riders Yet</div>
           <div className="mb-4 text-sm text-zinc-500">Add your first rider to start tracking fuel usage.</div>
@@ -1449,7 +1449,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
               setEditing(null);
               setShowModal(true);
             }}
-            className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3 font-display tracking-widest text-black"
+            className="glow-orange bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3 font-display tracking-widest text-black"
           >
             + ADD FIRST RIDER
           </button>
@@ -1457,7 +1457,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
       ) : (
         <div className="space-y-2">
           {employees.map((employee) => (
-            <div key={employee.id} className="border border-zinc-800 bg-zinc-950 p-4">
+            <div key={employee.id} className="surface-3d lift-3d border border-zinc-800 bg-zinc-950 p-4">
               <div className="flex items-start gap-3">
                 <div className="flex h-12 w-12 items-center justify-center border border-orange-500/40 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
                   <User className="h-6 w-6 text-orange-500" />
@@ -1486,13 +1486,13 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
                       setEditing(employee);
                       setShowModal(true);
                     }}
-                    className="flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-orange-500 hover:bg-orange-500/10"
+                    className="mini-surface-3d flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-orange-500 hover:bg-orange-500/10"
                   >
                     <Edit2 className="h-4 w-4 text-orange-500" />
                   </button>
                   <button
                     onClick={() => onResetPin(employee)}
-                    className="flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-amber-500 hover:bg-amber-500/10"
+                    className="mini-surface-3d flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-amber-500 hover:bg-amber-500/10"
                   >
                     <KeyRound className="h-4 w-4 text-amber-400" />
                   </button>
@@ -1543,7 +1543,7 @@ const ResetPinModal = ({ employee, busy, onClose, onConfirm }) => {
   return (
     <Modal open={Boolean(employee)} onClose={onClose} title="RESET RIDER PIN">
       <div className="space-y-4">
-        <div className="border border-amber-500/30 bg-amber-500/10 p-4">
+        <div className="surface-3d border border-amber-500/30 bg-amber-500/10 p-4">
           <div className="font-display text-xl text-white">{employee?.name}</div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-amber-300">
             @{employee?.username} | New PIN required
@@ -1572,7 +1572,7 @@ const ResetPinModal = ({ employee, busy, onClose, onConfirm }) => {
         <button
           onClick={() => valid && onConfirm(pin)}
           disabled={!valid || busy}
-          className="w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
+          className="glow-orange w-full bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? 'RESETTING...' : 'RESET PIN'}
         </button>
@@ -1606,7 +1606,7 @@ const AdminSettings = ({ config, onSave }) => {
         <div className="font-display text-3xl leading-none text-white">Settings</div>
       </div>
 
-      <div className="border border-zinc-800 bg-zinc-950 p-5">
+      <div className="surface-3d border border-zinc-800 bg-zinc-950 p-5">
         <div className="mb-4 font-display text-xl text-orange-500">FUEL CONFIG</div>
         <Input
           label="Currency Code"
@@ -1631,7 +1631,7 @@ const AdminSettings = ({ config, onSave }) => {
         />
       </div>
 
-      <div className="border border-[#25D366]/30 bg-zinc-950 p-5">
+      <div className="surface-3d border border-[#25D366]/30 bg-zinc-950 p-5">
         <div className="mb-3 flex items-center gap-2">
           <MessageCircle className="h-5 w-5 text-[#25D366]" />
           <div className="font-display text-xl text-[#25D366]">WHATSAPP SHARE</div>
@@ -1648,7 +1648,7 @@ const AdminSettings = ({ config, onSave }) => {
         />
       </div>
 
-      <div className="border border-zinc-800 bg-zinc-950 p-5">
+      <div className="surface-3d border border-zinc-800 bg-zinc-950 p-5">
         <div className="mb-3 flex items-center gap-2">
           <PackageCheck className="h-5 w-5 text-amber-400" />
           <div className="font-display text-xl text-amber-400">SUPABASE + PWA</div>
@@ -1682,13 +1682,13 @@ const AdminsPanel = ({ admins, onRefresh, onInvite }) => {
         </div>
         <button
           onClick={onRefresh}
-          className="flex h-10 w-10 items-center justify-center border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-orange-500 hover:text-orange-500"
+          className="mini-surface-3d flex h-10 w-10 items-center justify-center border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-orange-500 hover:text-orange-500"
         >
           <RefreshCw className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="border border-zinc-800 bg-zinc-950 p-5">
+      <div className="surface-3d border border-zinc-800 bg-zinc-950 p-5">
         <div className="mb-4 font-display text-xl text-orange-500">INVITE ADMIN</div>
         <Input
           label="Email"
@@ -1722,7 +1722,7 @@ const AdminsPanel = ({ admins, onRefresh, onInvite }) => {
         <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Current Admins</div>
         <div className="space-y-2">
           {admins.map((admin) => (
-            <div key={admin.userId} className="border border-zinc-800 bg-zinc-950 p-4">
+            <div key={admin.userId} className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
               <div className="font-semibold text-white">{admin.email}</div>
               <div className="mt-1 font-mono text-[10px] uppercase text-zinc-500">
                 Added {fmtDate(admin.createdAt)}
@@ -1730,7 +1730,7 @@ const AdminsPanel = ({ admins, onRefresh, onInvite }) => {
             </div>
           ))}
           {admins.length === 0 ? (
-            <div className="border border-dashed border-zinc-800 p-6 text-center text-zinc-500">
+            <div className="surface-3d border border-dashed border-zinc-800 p-6 text-center text-zinc-500">
               No admins loaded yet.
             </div>
           ) : null}
@@ -1741,7 +1741,7 @@ const AdminsPanel = ({ admins, onRefresh, onInvite }) => {
 };
 
 const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRefresh }) => (
-  <div className="space-y-4 p-5">
+  <div className="dashboard-3d space-y-4 p-5">
     <div className="flex items-center justify-between">
       <div>
         <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// History</div>
@@ -1749,7 +1749,7 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
       </div>
       <button
         onClick={onRefresh}
-        className="flex h-10 w-10 items-center justify-center border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-orange-500 hover:text-orange-500"
+        className="mini-surface-3d flex h-10 w-10 items-center justify-center border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-orange-500 hover:text-orange-500"
       >
         <RefreshCw className="h-4 w-4" />
       </button>
@@ -1757,7 +1757,7 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
 
     <div className="space-y-2">
       {auditRows.map((row) => (
-        <details key={row.id} className="border border-zinc-800 bg-zinc-950 p-4">
+        <details key={row.id} className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
           <summary className="cursor-pointer list-none">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1772,13 +1772,13 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div>
               <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">Before</div>
-              <pre className="overflow-x-auto whitespace-pre-wrap border border-zinc-800 bg-black p-3 text-xs text-zinc-300">
+              <pre className="mini-surface-3d overflow-x-auto whitespace-pre-wrap border border-zinc-800 bg-black p-3 text-xs text-zinc-300">
                 {JSON.stringify(row.before, null, 2) || 'null'}
               </pre>
             </div>
             <div>
               <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">After</div>
-              <pre className="overflow-x-auto whitespace-pre-wrap border border-zinc-800 bg-black p-3 text-xs text-zinc-300">
+              <pre className="mini-surface-3d overflow-x-auto whitespace-pre-wrap border border-zinc-800 bg-black p-3 text-xs text-zinc-300">
                 {JSON.stringify(row.after, null, 2) || 'null'}
               </pre>
             </div>
@@ -1786,11 +1786,11 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
         </details>
       ))}
       {auditRows.length === 0 ? (
-        <div className="border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No audit rows found.</div>
+        <div className="surface-3d border border-dashed border-zinc-800 p-8 text-center text-zinc-500">No audit rows found.</div>
       ) : null}
     </div>
 
-    <div className="flex items-center justify-between border border-zinc-800 bg-zinc-950 p-3">
+    <div className="surface-3d flex items-center justify-between border border-zinc-800 bg-zinc-950 p-3">
       <div className="font-mono text-[10px] uppercase text-zinc-500">
         Page {page + 1} | Showing {auditRows.length} of {auditCount}
       </div>
@@ -1798,14 +1798,14 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
         <button
           onClick={() => onPageChange(Math.max(0, page - 1))}
           disabled={page === 0}
-          className="border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400 disabled:opacity-40"
+          className="mini-surface-3d border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400 disabled:opacity-40"
         >
           Prev
         </button>
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={(page + 1) * pageSize >= auditCount}
-          className="border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400 disabled:opacity-40"
+          className="mini-surface-3d border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400 disabled:opacity-40"
         >
           Next
         </button>
@@ -1838,8 +1838,8 @@ const EmployeeDetailView = ({
   const cost = monthlySummary.cost;
 
   return (
-    <div>
-      <div className="border-b border-orange-500/20 bg-gradient-to-b from-orange-500/20 to-transparent p-5">
+    <div className="dashboard-3d">
+      <div className="surface-3d border-b border-orange-500/20 bg-gradient-to-b from-orange-500/20 to-transparent p-5">
         <button
           onClick={onBack}
           className="mb-3 flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-amber-500 hover:text-orange-500"
@@ -1860,13 +1860,13 @@ const EmployeeDetailView = ({
           <div className="flex gap-2">
             <button
               onClick={() => onResetPin(employee)}
-              className="flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-amber-500"
+              className="mini-surface-3d flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-amber-500"
             >
               <KeyRound className="h-4 w-4 text-amber-400" />
             </button>
             <button
               onClick={() => setShowEdit(true)}
-              className="flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-orange-500"
+              className="mini-surface-3d flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-orange-500"
             >
               <Edit2 className="h-4 w-4 text-orange-500" />
             </button>
@@ -1881,7 +1881,7 @@ const EmployeeDetailView = ({
               <button
                 key={value}
                 onClick={() => setSelectedMonth(value)}
-                className={`whitespace-nowrap border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${
+                className={`mini-surface-3d whitespace-nowrap border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${
                   selectedMonth === value
                     ? 'border-orange-500 bg-orange-500 text-black'
                     : 'border-zinc-800 bg-zinc-950 text-zinc-400'
@@ -1904,13 +1904,13 @@ const EmployeeDetailView = ({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, selectedMonth), `${employee.username}_${selectedMonth}.csv`)}
-              className="flex items-center justify-center gap-1.5 border border-amber-400/40 bg-zinc-950 py-2.5 font-display text-sm tracking-widest text-amber-400 hover:bg-amber-400/10"
+              className="mini-surface-3d flex items-center justify-center gap-1.5 border border-amber-400/40 bg-zinc-950 py-2.5 font-display text-sm tracking-widest text-amber-400 hover:bg-amber-400/10"
             >
               <FileDown className="h-3.5 w-3.5" /> MONTH CSV
             </button>
             <button
               onClick={() => downloadCSV(buildEmployeeCSV(employee, { [employee.id]: readings }, config, null), `${employee.username}_all.csv`)}
-              className="flex items-center justify-center gap-1.5 border border-orange-500/40 bg-zinc-950 py-2.5 font-display text-sm tracking-widest text-orange-500 hover:bg-orange-500/10"
+              className="mini-surface-3d flex items-center justify-center gap-1.5 border border-orange-500/40 bg-zinc-950 py-2.5 font-display text-sm tracking-widest text-orange-500 hover:bg-orange-500/10"
             >
               <Upload className="h-3.5 w-3.5" /> ALL TIME
             </button>
@@ -1920,14 +1920,14 @@ const EmployeeDetailView = ({
         <div>
           <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Reading History</div>
           {filtered.length === 0 ? (
-            <div className="border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No readings for this month.</div>
+            <div className="surface-3d border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No readings for this month.</div>
           ) : (
             <div className="space-y-1">
               {[...filtered].reverse().map((reading, index, list) => {
                 const previous = list[index + 1];
                 const diff = previous ? reading.km - previous.km : null;
                 return (
-                  <div key={reading.id} className="flex items-center gap-3 border border-zinc-800 bg-zinc-950 p-3">
+                  <div key={reading.id} className="surface-3d flex items-center gap-3 border border-zinc-800 bg-zinc-950 p-3">
                     <div className="flex h-10 w-10 flex-col items-center justify-center border border-orange-500/40">
                       <div className="font-display text-sm leading-none text-orange-500">{new Date(reading.date).getDate()}</div>
                       <div className="font-mono text-[8px] uppercase text-amber-500">
@@ -1955,7 +1955,7 @@ const EmployeeDetailView = ({
                     {reading.photoPath ? (
                       <button
                         onClick={() => onPreviewPhoto(reading.photoPath)}
-                        className="font-mono text-[10px] uppercase tracking-widest text-orange-500 hover:text-amber-400"
+                        className="mini-surface-3d border border-orange-500/30 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-orange-500 hover:text-amber-400"
                       >
                         PHOTO
                       </button>
@@ -1976,7 +1976,7 @@ const EmployeeDetailView = ({
                         }
                       }}
                       disabled={deletingReadingId === reading.id}
-                      className="font-mono text-[10px] uppercase tracking-widest text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="mini-surface-3d border border-red-500/30 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {deletingReadingId === reading.id ? 'DELETING' : 'DELETE'}
                     </button>
@@ -2411,7 +2411,7 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
                   {reading.photoPath ? (
                     <button
                       onClick={() => onPreviewPhoto(reading.photoPath)}
-                      className="font-mono text-[10px] uppercase tracking-widest text-orange-500 hover:text-amber-400"
+                      className="mini-surface-3d border border-orange-500/30 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-orange-500 hover:text-amber-400"
                     >
                       PHOTO
                     </button>
