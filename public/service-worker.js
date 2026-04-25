@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fleetline-v2';
+const CACHE_NAME = 'fleetline-v3';
 const SHELL_ASSETS = [
   '/',
   '/index.html',

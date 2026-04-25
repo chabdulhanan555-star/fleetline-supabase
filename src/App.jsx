@@ -475,6 +475,12 @@ const ThemeStyles = () => (
     .glow-orange {
       box-shadow: 0 0 24px -4px rgba(217,119,6,0.48), inset 0 1px 0 rgba(255,253,247,0.14);
     }
+    .app-logo-4d {
+      filter:
+        drop-shadow(0 14px 18px rgba(0,0,0,0.42))
+        drop-shadow(0 0 18px rgba(217,119,6,0.26));
+      transform: translateZ(24px);
+    }
     .dashboard-3d {
       perspective: 1400px;
       perspective-origin: 50% 0%;
@@ -615,11 +621,8 @@ const BrandHeader = ({ onLogout, userName, subtitle }) => (
     <div className="h-1 ticker-border"></div>
     <div className="flex items-center justify-between px-5 py-3">
       <div className="flex items-center gap-2">
-        <div
-          className="flex h-9 w-9 items-center justify-center bg-gradient-to-br from-orange-500 to-amber-600"
-          style={{ clipPath: 'polygon(20% 0, 100% 0, 80% 100%, 0 100%)' }}
-        >
-          <Bike className="h-5 w-5 text-black" strokeWidth={2.5} />
+        <div className="flex h-10 w-10 items-center justify-center">
+          <img src="/icons/icon.svg" alt="FleetLine logo" className="app-logo-4d h-10 w-10 object-contain" />
         </div>
         <div>
           <div className="font-display text-xl leading-none text-orange-500">FLEETLINE</div>
@@ -805,12 +808,7 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
           <div className="mb-8 text-center">
             <div className="relative mb-4 inline-block">
               <div className="absolute inset-0 bg-orange-500/20 blur-2xl"></div>
-              <div
-                className="relative flex h-20 w-20 items-center justify-center bg-gradient-to-br from-orange-500 via-orange-600 to-amber-700"
-                style={{ clipPath: 'polygon(20% 0, 100% 0, 80% 100%, 0 100%)' }}
-              >
-                <Bike className="h-10 w-10 text-black" strokeWidth={2.5} />
-              </div>
+              <img src="/icons/icon.svg" alt="FleetLine logo" className="app-logo-4d relative h-24 w-24 object-contain" />
             </div>
             <div className="font-display text-5xl leading-none text-white">
               FLEET<span className="text-orange-500">LINE</span>

@@ -1,21 +1,85 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FleetLine logo">
   <defs>
-    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
-      <stop offset="0%" stop-color="#d97706"/>
-      <stop offset="100%" stop-color="#eab308"/>
+    <linearGradient id="sky" x1="72" x2="430" y1="52" y2="456" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff3c4"/>
+      <stop offset="0.17" stop-color="#eab308"/>
+      <stop offset="0.48" stop-color="#d97706"/>
+      <stop offset="0.78" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#17202a"/>
     </linearGradient>
-    <linearGradient id="panel" x1="0%" x2="100%" y1="0%" y2="100%">
-      <stop offset="0%" stop-color="#0b0f14"/>
-      <stop offset="100%" stop-color="#17202a"/>
+    <linearGradient id="body" x1="118" x2="384" y1="88" y2="426" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#243244"/>
+      <stop offset="0.52" stop-color="#0b0f14"/>
+      <stop offset="1" stop-color="#05080c"/>
     </linearGradient>
+    <linearGradient id="glass" x1="168" x2="354" y1="130" y2="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffdf7" stop-opacity="0.26"/>
+      <stop offset="0.34" stop-color="#d97706" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#0f766e" stop-opacity="0.12"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="112" x2="392" y1="108" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffdf7"/>
+      <stop offset="0.2" stop-color="#fef3c7"/>
+      <stop offset="0.55" stop-color="#d97706"/>
+      <stop offset="1" stop-color="#92400e"/>
+    </linearGradient>
+    <linearGradient id="route" x1="146" x2="382" y1="306" y2="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#eab308"/>
+      <stop offset="0.48" stop-color="#d97706"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="38%" r="56%">
+      <stop offset="0" stop-color="#fef3c7" stop-opacity="0.34"/>
+      <stop offset="0.42" stop-color="#d97706" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#05080c" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="deepShadow" x="-24%" y="-24%" width="148%" height="158%">
+      <feDropShadow dx="0" dy="30" stdDeviation="24" flood-color="#000000" flood-opacity="0.52"/>
+      <feDropShadow dx="-18" dy="16" stdDeviation="10" flood-color="#92400e" flood-opacity="0.28"/>
+      <feDropShadow dx="18" dy="-12" stdDeviation="18" flood-color="#0f766e" flood-opacity="0.2"/>
+    </filter>
+    <filter id="innerGlow" x="-16%" y="-16%" width="132%" height="132%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.92 0 1 0 0 0.48 0 0 1 0 0.02 0 0 0 0.62 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="plateClip">
+      <path d="M92 67h309l52 61-65 315H95L48 371z"/>
+    </clipPath>
   </defs>
-  <rect width="512" height="512" rx="96" fill="#0b0f14"/>
-  <path d="M96 76h320l-64 360H96z" fill="url(#bg)"/>
-  <path d="M142 126h228l-44 260H142z" fill="url(#panel)" stroke="#d97706" stroke-width="12"/>
-  <path d="M176 278c27-54 78-84 140-84 16 0 33 2 48 7" fill="none" stroke="#eab308" stroke-linecap="round" stroke-width="20"/>
-  <circle cx="182" cy="316" r="24" fill="#eab308"/>
-  <circle cx="330" cy="316" r="24" fill="#eab308"/>
-  <path d="M200 248l86 58" stroke="#d97706" stroke-linecap="round" stroke-width="18"/>
-  <path d="M180 170h132" stroke="#eab308" stroke-linecap="round" stroke-width="16"/>
-  <path d="M180 204h92" stroke="#eab308" stroke-linecap="round" stroke-width="16"/>
+
+  <rect width="512" height="512" rx="108" fill="#05080c"/>
+  <rect width="512" height="512" rx="108" fill="url(#halo)"/>
+
+  <g filter="url(#deepShadow)">
+    <path d="M109 88h300l39 47-66 320H99L60 382z" fill="#020407"/>
+    <path d="M92 67h309l52 61-65 315H95L48 371z" fill="url(#sky)"/>
+    <path d="M116 102h263l38 40-55 271H116L83 361z" fill="url(#body)" stroke="url(#edge)" stroke-width="10"/>
+    <path d="M140 128h214l28 27-42 225H140l-24-44z" fill="url(#glass)" opacity="0.86"/>
+  </g>
+
+  <g clip-path="url(#plateClip)" opacity="0.28">
+    <path d="M62 374c85-14 133-57 186-132 50-70 109-116 196-126" fill="none" stroke="#fffdf7" stroke-width="6"/>
+    <path d="M77 404c97-28 156-80 215-168 38-58 88-92 141-104" fill="none" stroke="#0f766e" stroke-width="5"/>
+  </g>
+
+  <g filter="url(#innerGlow)">
+    <path d="M141 316c39-78 111-121 199-121 20 0 42 3 63 9" fill="none" stroke="url(#route)" stroke-linecap="round" stroke-width="24"/>
+    <path d="M176 281l95 61" fill="none" stroke="#fff3c4" stroke-linecap="round" stroke-width="16"/>
+    <circle cx="148" cy="325" r="27" fill="#eab308" stroke="#fffdf7" stroke-opacity="0.62" stroke-width="7"/>
+    <circle cx="331" cy="205" r="25" fill="#0f766e" stroke="#ccfbf1" stroke-opacity="0.7" stroke-width="7"/>
+    <circle cx="383" cy="211" r="14" fill="#fef3c7" opacity="0.9"/>
+  </g>
+
+  <g>
+    <path d="M169 151h121" stroke="#fef3c7" stroke-linecap="round" stroke-width="18"/>
+    <path d="M169 190h82" stroke="#eab308" stroke-linecap="round" stroke-width="16"/>
+    <path d="M168 228h55" stroke="#d97706" stroke-linecap="round" stroke-width="14"/>
+  </g>
+
+  <path d="M116 102h263l38 40-55 271H116L83 361z" fill="none" stroke="#fffdf7" stroke-opacity="0.16" stroke-width="3"/>
+  <path d="M94 73h304l49 57" fill="none" stroke="#fffdf7" stroke-linecap="round" stroke-opacity="0.5" stroke-width="7"/>
 </svg>
