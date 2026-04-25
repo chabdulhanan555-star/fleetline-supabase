@@ -5,16 +5,37 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const RIDER_SESSION_KEY = 'fleetline.rider-session.v1';
 const DEMO_STORE_KEY = 'fleetline.demo-store.v1';
 const DEMO_SESSION_KEY = 'fleetline.demo-session.v1';
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+const normalizedSupabaseUrl = String(supabaseUrl || '').trim();
+const normalizedSupabaseAnonKey = String(supabaseAnonKey || '').trim();
+const hasPlaceholderText = (value) => {
+  const text = String(value || '').trim().toLowerCase();
+  return !text || text.includes('your-') || text.includes('your ') || text.includes('placeholder');
+};
+const hasValidSupabaseUrl =
+  /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(normalizedSupabaseUrl) ||
+  /^https:\/\/[a-z0-9-]+\.supabase\.in$/.test(normalizedSupabaseUrl);
+const hasValidAnonKey = normalizedSupabaseAnonKey.startsWith('eyJ') && !hasPlaceholderText(normalizedSupabaseAnonKey);
+
+export const supabaseConfigError = !normalizedSupabaseUrl
+  ? 'Missing VITE_SUPABASE_URL.'
+  : !hasValidSupabaseUrl
+    ? 'VITE_SUPABASE_URL must be your real Supabase project URL.'
+    : !normalizedSupabaseAnonKey
+      ? 'Missing VITE_SUPABASE_ANON_KEY.'
+      : !hasValidAnonKey
+        ? 'VITE_SUPABASE_ANON_KEY is invalid. Replace the placeholder with the real anon public key.'
+        : '';
+export const isSupabaseConfigured = !supabaseConfigError;
 export const isDemoMode =
   !isSupabaseConfigured && import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === 'true';
 
 if (!isSupabaseConfigured) {
-  console.warn('[fleetline] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
+  console.warn(`[fleetline] Supabase setup problem: ${supabaseConfigError}`);
 }
 
 const adminClient = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+  ? createClient(normalizedSupabaseUrl, normalizedSupabaseAnonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -39,7 +60,7 @@ adminClient?.auth.onAuthStateChange(() => {
 });
 
 function missingConfigError() {
-  return new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Add them to .env.local and restart Vite.');
+  return new Error(`${supabaseConfigError} Add the correct values to .env.local or Vercel Environment Variables, then redeploy.`);
 }
 
 function todayIso(offsetDays = 0) {
@@ -274,7 +295,7 @@ function buildRiderClient(accessToken) {
     throw missingConfigError();
   }
 
-  const client = createClient(supabaseUrl, supabaseAnonKey, {
+  const client = createClient(normalizedSupabaseUrl, normalizedSupabaseAnonKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,

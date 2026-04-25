@@ -56,6 +56,7 @@ import {
   subscribeConfig,
   subscribeEmployees,
   subscribeReadings,
+  supabaseConfigError,
   uploadPhoto,
 } from './lib/supabase.js';
 
@@ -652,22 +653,27 @@ const LoadingScreen = () => (
   </div>
 );
 
-const SupabaseSetupView = () => (
+const SupabaseSetupView = ({ configError }) => (
   <div className="grid-bg flex min-h-screen items-center justify-center bg-black px-5 text-white font-body">
     <ThemeStyles />
     <div className="w-full max-w-xl border border-orange-500/30 bg-zinc-950 p-6">
       <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Setup Required</div>
       <div className="font-display text-4xl leading-none text-white">Connect Supabase</div>
       <div className="mt-3 text-sm leading-6 text-zinc-400">
-        Add your project URL and anon key to a local env file, then restart the Vite server.
+        Add your real project URL and anon public key, then restart local Vite or redeploy Vercel.
       </div>
+      {configError ? (
+        <div className="mt-4 border border-red-500/30 bg-red-500/10 p-3 font-mono text-[10px] uppercase tracking-widest text-red-300">
+          {configError}
+        </div>
+      ) : null}
       <pre className="mt-5 overflow-x-auto border border-zinc-800 bg-black p-4 font-mono text-xs text-amber-300">
 {`# .env.local
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key`}
       </pre>
       <div className="mt-4 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-        Restart with: npm.cmd run dev
+        Vercel uses the same two names in Project Settings &gt; Environment Variables.
       </div>
     </div>
   </div>
@@ -2709,7 +2715,7 @@ export default function App() {
   }
 
   if (!isSupabaseConfigured && !isDemoMode) {
-    return <SupabaseSetupView />;
+    return <SupabaseSetupView configError={supabaseConfigError} />;
   }
 
   if (!session) {
