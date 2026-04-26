@@ -17,7 +17,6 @@ import {
   Hash,
   History,
   KeyRound,
-  Loader2,
   LogOut,
   MapPin,
   MessageCircle,
@@ -1045,7 +1044,10 @@ const ThemeStyles = () => (
       .toast-rise,
       .modal-backdrop,
       .modal-shell,
-      .photo-preview-zoom {
+      .photo-preview-zoom,
+      .ghost-card-pulse,
+      .ghost-upload-orb,
+      .skeleton-shimmer {
         transition: none;
         animation: none;
       }
@@ -1129,13 +1131,28 @@ const ThemeStyles = () => (
       0% { background-position: -200% 0; }
       100% { background-position: 200% 0; }
     }
+    @keyframes ghost-pulse {
+      0%, 100% { opacity: 0.58; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.01); }
+    }
     .skeleton-shimmer {
       background:
         linear-gradient(90deg, rgba(255,253,247,0.04) 0%, rgba(217,119,6,0.10) 48%, rgba(255,253,247,0.04) 100%),
         linear-gradient(155deg, rgba(23,32,42,0.95), rgba(8,12,17,0.95));
       background-size: 200% 100%, 100% 100%;
-      animation: shimmer 1.6s linear infinite;
+      animation: shimmer 1.6s linear infinite, ghost-pulse 1.9s ease-in-out infinite;
       border-radius: 14px;
+    }
+    .ghost-card-pulse {
+      animation: ghost-pulse 1.7s ease-in-out infinite;
+    }
+    .ghost-upload-orb {
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 35% 20%, rgba(255,253,247,0.18), transparent 28%),
+        linear-gradient(145deg, rgba(217,119,6,0.28), rgba(8,12,17,0.88));
+      box-shadow: 0 0 34px rgba(217,119,6,0.24), inset 0 1px 0 rgba(255,253,247,0.14);
+      animation: ghost-pulse 1.4s ease-in-out infinite;
     }
     .odo-window {
       display: inline-block;
@@ -1649,7 +1666,9 @@ const LoadingScreen = () => (
           <SkeletonCard className="h-3 w-24" />
           <SkeletonCard className="h-5 w-40" />
         </div>
-        <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+        <div className="ghost-card-pulse mini-surface-3d border border-orange-500/20 px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-amber-400">
+          Loading
+        </div>
       </div>
       <SkeletonCard className="h-40" />
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
@@ -3575,7 +3594,9 @@ const RiderSubmitView = ({
               <img src={photoPreview} alt="Odometer preview" className="h-56 w-full border border-orange-500/30 object-cover" />
               {submitting ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 backdrop-blur-sm">
-                  <Loader2 className="h-10 w-10 animate-spin text-orange-500" />
+                  <div className="ghost-upload-orb flex h-12 w-12 items-center justify-center">
+                    <Camera className="h-6 w-6 text-orange-300" />
+                  </div>
                   <div className="font-mono text-[10px] uppercase tracking-widest text-amber-300">Uploading photo...</div>
                 </div>
               ) : null}
