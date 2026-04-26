@@ -8,6 +8,10 @@ const rawSupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const RIDER_SESSION_KEY = 'fleetline.rider-session.v1';
 const DEMO_STORE_KEY = 'fleetline.demo-store.v1';
 const DEMO_SESSION_KEY = 'fleetline.demo-session.v1';
+const ROUTE_SESSION_HISTORY_DAYS = 190;
+const ROUTE_SESSION_COLUMNS =
+  'id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at';
+const ROUTE_POINT_COLUMNS = 'id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at';
 const hasPlaceholderText = (value) => {
   const text = String(value || '').trim().toLowerCase();
   return !text || text.includes('your-') || text.includes('your ') || text.includes('placeholder');
@@ -578,6 +582,83 @@ function subscribeTable({ table, filter, query, callback }) {
   };
 }
 
+function sortRouteSessions(rows) {
+  return [...rows].sort(
+    (left, right) =>
+      right.date.localeCompare(left.date) ||
+      new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime(),
+  );
+}
+
+function subscribeIncrementalRouteSessions(callback) {
+  const client = ensureAuthenticatedClient();
+  const channel = client.channel(`route-sessions-${Math.random().toString(36).slice(2, 10)}`);
+  const rowsById = new Map();
+  let closed = false;
+
+  const emit = () => {
+    if (!closed) callback(sortRouteSessions([...rowsById.values()]));
+  };
+
+  client
+    .from('route_sessions')
+    .select(ROUTE_SESSION_COLUMNS)
+    .gte('date', todayIso(-ROUTE_SESSION_HISTORY_DAYS))
+    .order('date', { ascending: false })
+    .order('started_at', { ascending: false })
+    .then(({ data, error }) => {
+      if (error) {
+        console.error('[fleetline] route session load failed', error);
+        return;
+      }
+
+      rowsById.clear();
+      (data ?? []).map(mapRouteSession).forEach((row) => rowsById.set(row.id, row));
+      emit();
+    });
+
+  channel.on('postgres_changes', { event: '*', schema: 'public', table: 'route_sessions' }, (payload) => {
+    if (payload.eventType === 'DELETE') {
+      const id = payload.old?.id;
+      if (id) rowsById.delete(id);
+      emit();
+      return;
+    }
+
+    if (payload.new?.id) {
+      rowsById.set(payload.new.id, mapRouteSession(payload.new));
+      emit();
+    }
+  });
+
+  channel.subscribe();
+
+  return () => {
+    closed = true;
+    client.removeChannel(channel);
+  };
+}
+
+function subscribeIncrementalRoutePoints(callback) {
+  const client = ensureAuthenticatedClient();
+  const channel = client.channel(`route-points-${Math.random().toString(36).slice(2, 10)}`);
+
+  // Do not bulk-load every GPS point for every rider. Full route geometry loads on demand per selected session.
+  callback([]);
+
+  channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'route_points' }, (payload) => {
+    if (payload.new?.id) {
+      callback([mapRoutePoint(payload.new)]);
+    }
+  });
+
+  channel.subscribe();
+
+  return () => {
+    client.removeChannel(channel);
+  };
+}
+
 export const supabase = adminClient;
 
 export async function getCurrentSession() {
@@ -767,16 +848,7 @@ export function subscribeRouteSessions(callback) {
     return demoSubscribe('routeSessions', callback);
   }
 
-  return subscribeTable({
-    table: 'route_sessions',
-    query: (client) =>
-      client
-        .from('route_sessions')
-        .select('id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at')
-        .order('date', { ascending: false })
-        .order('started_at', { ascending: false }),
-    callback: (rows) => callback((rows ?? []).map(mapRouteSession)),
-  });
+  return subscribeIncrementalRouteSessions(callback);
 }
 
 export function subscribeRoutePoints(callback) {
@@ -784,19 +856,7 @@ export function subscribeRoutePoints(callback) {
     return demoSubscribe('routePoints', callback);
   }
 
-  // Keep the live GPS buffer small; older route sessions are loaded on demand.
-  const since = new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString();
-
-  return subscribeTable({
-    table: 'route_points',
-    query: (client) =>
-      client
-        .from('route_points')
-        .select('id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at')
-        .gte('recorded_at', since)
-        .order('recorded_at', { ascending: true }),
-    callback: (rows) => callback((rows ?? []).map(mapRoutePoint)),
-  });
+  return subscribeIncrementalRoutePoints(callback);
 }
 
 export async function listRoutePointsForSession(sessionId) {
@@ -810,7 +870,7 @@ export async function listRoutePointsForSession(sessionId) {
   const client = ensureAuthenticatedClient();
   const { data, error } = await client
     .from('route_points')
-    .select('id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at')
+    .select(ROUTE_POINT_COLUMNS)
     .eq('session_id', sessionId)
     .order('recorded_at', { ascending: true });
 
@@ -1179,18 +1239,16 @@ export async function startRouteSession(session) {
     started_at: session.startedAt ?? new Date().toISOString(),
   };
 
-  const queryColumns =
-    'id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at';
   const { data, error } = await client
     .from('route_sessions')
     .insert(payload)
-    .select(queryColumns)
+    .select(ROUTE_SESSION_COLUMNS)
     .single();
 
   if (error?.code === '23505') {
     const { data: existing, error: existingError } = await client
       .from('route_sessions')
-      .select(queryColumns)
+      .select(ROUTE_SESSION_COLUMNS)
       .eq('employee_id', session.employeeId)
       .eq('date', session.date)
       .single();
@@ -1209,7 +1267,7 @@ export async function startRouteSession(session) {
           ended_at: null,
         })
         .eq('id', existing.id)
-        .select(queryColumns)
+        .select(ROUTE_SESSION_COLUMNS)
         .single();
 
       if (recoverError) {
@@ -1283,7 +1341,7 @@ export async function appendRoutePoints(points) {
   const { data, error } = await client
     .from('route_points')
     .insert(payload)
-    .select('id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at');
+    .select(ROUTE_POINT_COLUMNS);
 
   if (error?.code === '23505') {
     return [];
@@ -1330,7 +1388,7 @@ export async function finishRouteSession({ sessionId, endReadingId, endedAt, tot
       total_distance_m: Math.max(0, Math.round(Number(totalDistanceM) || 0)),
     })
     .eq('id', sessionId)
-    .select('id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at')
+    .select(ROUTE_SESSION_COLUMNS)
     .single();
 
   if (error) {

@@ -36,6 +36,16 @@ import {
   X,
 } from 'lucide-react';
 import { enqueue, flushOutbox, onOutboxChange } from './lib/outbox.js';
+import { makeClientId } from './lib/id.js';
+import {
+  buildRouteLineData,
+  buildRoutePointData,
+  calculateRouteDistanceM,
+  distanceMeters,
+  groupRoutePointsBySession,
+  sortRoutePoints,
+  thinRoutePoints,
+} from './lib/route-utils.js';
 import {
   adminLogin,
   appendRoutePoints,
@@ -119,6 +129,7 @@ const ROUTE_RENDER_LINE_LIMIT = 450;
 const ROUTE_RENDER_MARKER_LIMIT = 110;
 const ROUTE_REFIT_POINT_DELTA = 18;
 const ROUTE_MAP_FALLBACK_CENTER = [74.3587, 31.5204];
+const ROUTE_POINTS_MEMORY_LIMIT = 5000;
 const ROUTE_MAP_STYLE = {
   version: 8,
   sources: {
@@ -186,57 +197,6 @@ const fmtDistance = (meters) => {
   const value = Number(meters) || 0;
   return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${Math.round(value)} m`;
 };
-
-const makeClientId = () => {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-
-  const bytes = new Uint8Array(16);
-  if (globalThis.crypto?.getRandomValues) {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
-    for (let index = 0; index < bytes.length; index += 1) {
-      bytes[index] = Math.floor(Math.random() * 256);
-    }
-  }
-
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-};
-
-const toRadians = (value) => (Number(value) * Math.PI) / 180;
-
-const distanceMeters = (left, right) => {
-  if (!left || !right) return 0;
-  const earthRadiusM = 6371000;
-  const dLat = toRadians(right.lat - left.lat);
-  const dLng = toRadians(right.lng - left.lng);
-  const lat1 = toRadians(left.lat);
-  const lat2 = toRadians(right.lat);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * earthRadiusM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-const sortRoutePoints = (points = []) =>
-  [...(points ?? [])].sort((left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime());
-
-const calculateRouteDistanceM = (points) =>
-  sortRoutePoints(points).reduce((total, point, index, rows) => {
-    if (index === 0) return total;
-    return total + distanceMeters(rows[index - 1], point);
-  }, 0);
-
-const groupRoutePointsBySession = (points) =>
-  points.reduce((accumulator, point) => {
-    accumulator[point.sessionId] ??= [];
-    accumulator[point.sessionId].push(point);
-    return accumulator;
-  }, {});
 
 const readStoredActiveRoute = () => {
   if (typeof window === 'undefined') return null;
@@ -443,12 +403,15 @@ const getRouteForDay = (routeSessions = [], employeeId, date) =>
 
 const getRouteHealth = ({ routeSession, routePoints = [], odometerKm = 0 }) => {
   const sortedPoints = sortRoutePoints(routePoints);
+  const pointCount = sortedPoints.length || routeSession?.pointCount || 0;
   const gpsDistanceM = routeSession?.totalDistanceM || calculateRouteDistanceM(sortedPoints);
   const gpsDistanceKm = gpsDistanceM / 1000;
   const activeMinutes =
     sortedPoints.length > 1
       ? Math.max(0, Math.round((new Date(sortedPoints.at(-1).recordedAt).getTime() - new Date(sortedPoints[0].recordedAt).getTime()) / 60000))
-      : 0;
+      : routeSession?.startedAt && routeSession?.lastPointAt
+        ? Math.max(0, Math.round((new Date(routeSession.lastPointAt).getTime() - new Date(routeSession.startedAt).getTime()) / 60000))
+        : 0;
   const diffKm = odometerKm > 0 && gpsDistanceKm > 0 ? Math.abs(odometerKm - gpsDistanceKm) : 0;
   const diffPct = odometerKm > 0 && gpsDistanceKm > 0 ? (diffKm / odometerKm) * 100 : null;
   const confidence =
@@ -460,13 +423,13 @@ const getRouteHealth = ({ routeSession, routePoints = [], odometerKm = 0 }) => {
 
   return {
     activeMinutes,
-    pointCount: sortedPoints.length,
+    pointCount,
     gpsDistanceM,
     gpsDistanceKm,
     diffKm,
     diffPct,
     confidence,
-    hasGps: sortedPoints.length > 0,
+    hasGps: pointCount > 0,
   };
 };
 
@@ -1436,81 +1399,13 @@ const BarChart = ({ rows, valueLabel = (value) => fmtNum(Math.round(value)), emp
   );
 };
 
-const thinRoutePoints = (points, maxPoints) => {
-  if (!Array.isArray(points) || points.length <= maxPoints) return points || [];
-  if (maxPoints <= 2) return [points[0], points.at(-1)].filter(Boolean);
-
-  const step = (points.length - 1) / (maxPoints - 1);
-  const thinned = [];
-  const seen = new Set();
-
-  for (let index = 0; index < maxPoints; index += 1) {
-    const point = points[Math.round(index * step)];
-    const key = point?.id ?? `${point?.lat}:${point?.lng}:${point?.recordedAt}`;
-    if (point && !seen.has(key)) {
-      seen.add(key);
-      thinned.push(point);
-    }
-  }
-
-  const lastPoint = points.at(-1);
-  const lastKey = lastPoint?.id ?? `${lastPoint?.lat}:${lastPoint?.lng}:${lastPoint?.recordedAt}`;
-  if (lastPoint && !seen.has(lastKey)) {
-    thinned.push(lastPoint);
-  }
-
-  return thinned;
-};
-
-const routePointKey = (point) => point?.id ?? `${point?.lat}:${point?.lng}:${point?.recordedAt}`;
-
-const buildRouteLineData = (points) => {
-  const linePoints = thinRoutePoints(points, ROUTE_RENDER_LINE_LIMIT);
-
-  return {
-    type: 'FeatureCollection',
-    features: linePoints.length > 1
-      ? [
-          {
-            type: 'Feature',
-            properties: {},
-            geometry: {
-              type: 'LineString',
-              coordinates: linePoints.map((point) => [point.lng, point.lat]),
-            },
-          },
-        ]
-      : [],
-  };
-};
-
-const buildRoutePointData = (points) => {
-  const markerPoints = thinRoutePoints(points, ROUTE_RENDER_MARKER_LIMIT);
-  const firstKey = routePointKey(points[0]);
-  const lastKey = routePointKey(points.at(-1));
-
-  return {
-    type: 'FeatureCollection',
-    features: markerPoints.map((point) => ({
-      type: 'Feature',
-      properties: {
-        kind: routePointKey(point) === firstKey ? 'start' : routePointKey(point) === lastKey ? 'live' : 'point',
-      },
-      geometry: {
-        type: 'Point',
-        coordinates: [point.lng, point.lat],
-      },
-    })),
-  };
-};
-
 const updateRouteMapData = (map, points, maplibre, options = {}) => {
   const lineSource = map.getSource('route-line');
   const pointSource = map.getSource('route-points');
   if (!lineSource || !pointSource) return;
 
-  lineSource.setData(buildRouteLineData(points));
-  pointSource.setData(buildRoutePointData(points));
+  lineSource.setData(buildRouteLineData(points, ROUTE_RENDER_LINE_LIMIT));
+  pointSource.setData(buildRoutePointData(points, ROUTE_RENDER_MARKER_LIMIT));
 
   const { fit = false, follow = false } = options;
   const lastPoint = points.at(-1);
@@ -1543,6 +1438,7 @@ const RouteMap = ({ points, session, employee }) => {
   const [mapStatus, setMapStatus] = useState('loading');
   const routePoints = useMemo(() => sortRoutePoints(points), [points]);
   const routeDistance = session?.totalDistanceM || calculateRouteDistanceM(routePoints);
+  const visiblePointCount = routePoints.length || session?.pointCount || 0;
   const lastPoint = routePoints.at(-1);
 
   useEffect(() => {
@@ -1584,11 +1480,11 @@ const RouteMap = ({ points, session, employee }) => {
 
           map.addSource('route-line', {
             type: 'geojson',
-            data: buildRouteLineData([]),
+            data: buildRouteLineData([], ROUTE_RENDER_LINE_LIMIT),
           });
           map.addSource('route-points', {
             type: 'geojson',
-            data: buildRoutePointData([]),
+            data: buildRoutePointData([], ROUTE_RENDER_MARKER_LIMIT),
           });
           map.addLayer({
             id: 'route-line-glow',
@@ -1701,8 +1597,12 @@ const RouteMap = ({ points, session, employee }) => {
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-8 text-center">
           <div>
             <MapPin className="mx-auto mb-3 h-10 w-10 text-zinc-600" />
-            <div className="font-display text-2xl text-white">No GPS Points Yet</div>
-            <div className="mt-1 text-sm text-zinc-500">The route line appears as soon as the rider sends location points.</div>
+            <div className="font-display text-2xl text-white">{visiblePointCount > 0 ? 'Loading GPS Points' : 'No GPS Points Yet'}</div>
+            <div className="mt-1 text-sm text-zinc-500">
+              {visiblePointCount > 0
+                ? 'Opening the selected route without loading every rider route at once.'
+                : 'The route line appears as soon as the rider sends location points.'}
+            </div>
           </div>
         </div>
       ) : null}
@@ -1717,7 +1617,7 @@ const RouteMap = ({ points, session, employee }) => {
         </div>
         <div className="mini-surface-3d border border-zinc-700 bg-black/80 px-3 py-2">
           <div className="font-mono text-[9px] uppercase text-zinc-500">Points</div>
-          <div className="font-display text-xl leading-none text-white">{routePoints.length}</div>
+          <div className="font-display text-xl leading-none text-white">{visiblePointCount}</div>
         </div>
       </div>
       {lastPoint ? (
@@ -1733,6 +1633,7 @@ const RouteMap = ({ points, session, employee }) => {
 const RouteSessionCard = ({ session, employee, points, selected, deleting, onSelect, onDelete }) => {
   const stale = session.status === 'active' && (!session.lastPointAt || Date.now() - new Date(session.lastPointAt).getTime() > ROUTE_STALE_AFTER_MS);
   const distance = session.totalDistanceM || calculateRouteDistanceM(points);
+  const pointCount = session.pointCount || points.length;
   const tone = session.status === 'active' ? (stale ? 'amber' : 'green') : 'zinc';
 
   return (
@@ -1752,7 +1653,7 @@ const RouteSessionCard = ({ session, employee, points, selected, deleting, onSel
             {fmtDate(session.date)} | {session.status}
           </div>
           <div className="mt-1 font-mono text-[9px] uppercase text-zinc-600">
-            {points.length} points | {fmtDistance(distance)}
+            {pointCount} points | {fmtDistance(distance)}
           </div>
         </button>
         {session.status === 'active' ? (
@@ -3298,7 +3199,7 @@ const EmployeeRouteHistory = ({ employee, routeSessions = [], routePoints = [], 
                 >
                   <div className="font-display text-lg leading-none">{fmtShort(session.date)}</div>
                   <div className="font-mono text-[9px] uppercase">
-                    {session.status} | {points.length} points
+                    {session.status} | {session.pointCount || points.length} points
                   </div>
                 </button>
               );
@@ -4119,7 +4020,7 @@ export default function App() {
             rows.forEach((point) => byId.set(point.id, point));
             return [...byId.values()].sort(
               (left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime(),
-            );
+            ).slice(-ROUTE_POINTS_MEMORY_LIMIT);
           });
         })
       : null;
@@ -4489,7 +4390,7 @@ export default function App() {
         rows.forEach((point) => byId.set(point.id, point));
         return [...byId.values()].sort(
           (left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime(),
-        );
+        ).slice(-ROUTE_POINTS_MEMORY_LIMIT);
       });
     } catch (error) {
       console.error(error);
