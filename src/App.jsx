@@ -2367,7 +2367,9 @@ const AdminOverview = ({
   onSelectEmployee,
 }) => {
   const [now, setNow] = useState(() => new Date());
+  const thisMonth = monthKey(today());
   const alertDate = today();
+  const monthDates = getDatesForMonth(thisMonth, alertDate, { workingOnly: true });
   const missingAlerts = getMissingReadingAlerts(employees, readingsByEmployee, alertDate, now);
   const morningAlerts = missingAlerts.filter((alert) => alert.type === 'morning').length;
   const eveningAlerts = missingAlerts.filter((alert) => alert.type === 'evening').length;
@@ -2386,20 +2388,83 @@ const AdminOverview = ({
   const activeRouteCount = routeSessions.filter((session) => session.date === alertDate && session.status === 'active').length;
   const inMarketCount = dailyCloseRows.filter((row) => row.daySummary.morning && !row.daySummary.evening).length;
   const needsReviewCount = dailyCloseRows.filter((row) => row.flags.length > 0).length;
-  const todayTotals = dailyCloseRows.reduce(
-    (accumulator, row) => {
-      accumulator.started += row.daySummary.morning ? 1 : 0;
-      accumulator.completed += row.daySummary.complete ? 1 : 0;
-      accumulator.km += row.daySummary.complete ? row.daySummary.distance : 0;
-      return accumulator;
-    },
-    { started: 0, completed: 0, km: 0 },
-  );
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 60000);
     return () => window.clearInterval(interval);
   }, []);
+
+  const monthlyReportRows = employees.map((employee) => {
+    const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
+      (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
+    );
+    const mileage = Number(employee.mileage ?? config.defaultMileage);
+    const summary = getMonthlySummary(monthlyReadings, thisMonth, mileage, config.fuelPrice, fuelPriceHistory);
+    const dailySummaries = monthDates.map((date) => getDaySummary(readingsByEmployee[employee.id] || [], date));
+    const incompleteDays = dailySummaries.filter((day) => day.morning || day.evening).filter((day) => !day.complete).length;
+    const todaySummary = getDaySummary(readingsByEmployee[employee.id] || [], alertDate);
+    const todayStatus = getRiderTodayStatus(todaySummary, now, alertDate);
+
+    return {
+      employee,
+      monthlyReadings,
+      summary,
+      monthlyKm: summary.totalKm,
+      fuelCost: summary.cost,
+      incompleteDays,
+      todaySummary,
+      todayStatus,
+      didToday: Boolean(todaySummary.morning || todaySummary.evening),
+    };
+  });
+
+  const leaderboardRows = [...monthlyReportRows].sort((left, right) => right.monthlyKm - left.monthlyKm);
+  const fuelLeaderboardRows = [...monthlyReportRows].sort((left, right) => right.fuelCost - left.fuelCost);
+
+  const todayTotals = monthlyReportRows.reduce(
+    (accumulator, row) => {
+      const mileage = Number(row.employee.mileage ?? config.defaultMileage);
+      const distance = row.todaySummary.complete ? row.todaySummary.distance : 0;
+      const fuel = mileage > 0 ? distance / mileage : 0;
+      accumulator.started += row.todaySummary.morning ? 1 : 0;
+      accumulator.completed += row.todaySummary.complete ? 1 : 0;
+      accumulator.km += distance;
+      accumulator.fuelCost += fuel * getFuelPriceForDate(alertDate, fuelPriceHistory, config.fuelPrice);
+      return accumulator;
+    },
+    { started: 0, completed: 0, km: 0, fuelCost: 0 },
+  );
+
+  const stats = monthlyReportRows.reduce(
+    (accumulator, employee) => {
+      accumulator.totalKm += employee.summary.totalKm;
+      accumulator.totalFuel += employee.summary.fuelUsed;
+      accumulator.totalCost += employee.summary.cost;
+      accumulator.activeToday += employee.didToday ? 1 : 0;
+      return accumulator;
+    },
+    { totalKm: 0, totalFuel: 0, totalCost: 0, activeToday: 0 },
+  );
+
+  const dailyFleetRows = monthDates.slice(-10).map((date) => {
+    const km = employees.reduce((sum, employee) => {
+      const summary = getDaySummary(readingsByEmployee[employee.id] || [], date);
+      return sum + (summary.complete ? summary.distance : 0);
+    }, 0);
+
+    return {
+      label: new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      value: km,
+    };
+  });
+
+  const riderFuelRows = fuelLeaderboardRows
+    .filter((row) => row.fuelCost > 0)
+    .slice(0, 5)
+    .map((row) => ({ label: row.employee.name, value: row.fuelCost }));
+
+  const highestKmRider = leaderboardRows.find((row) => row.monthlyKm > 0);
+  const highestFuelRider = fuelLeaderboardRows.find((row) => row.fuelCost > 0);
 
   return (
     <div className="dashboard-3d space-y-4 p-5">
