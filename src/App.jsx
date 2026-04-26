@@ -109,6 +109,8 @@ const READING_TYPES = {
 const HIGH_DAILY_KM_WARNING = 300;
 const ROUTE_ODOMETER_DIFF_WARNING_PCT = 25;
 const APP_TIME_ZONE = 'Asia/Karachi';
+const WORKING_WEEKDAYS = new Set([1, 2, 3, 4, 5, 6]);
+const WORKING_DAYS_LABEL = 'Monday to Saturday';
 const MISSING_READING_CUTOFFS = {
   morning: { hour: 11, label: '11:00 AM' },
   evening: { hour: 18, label: '6:00 PM' },
@@ -187,6 +189,12 @@ const getAppDateTime = (date = new Date()) => {
 
 const today = () => getAppDateTime().date;
 const monthKey = (value) => value.slice(0, 7);
+const getDateParts = (value) => value.split('-').map(Number);
+const getWeekday = (value) => {
+  const [year, month, day] = getDateParts(value);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+};
+const isWorkingDay = (value) => WORKING_WEEKDAYS.has(getWeekday(value));
 const fmtDate = (value) =>
   new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 const fmtShort = (value) =>
@@ -327,7 +335,11 @@ const getNextReadingType = (readings, date = today()) => {
 const getMonthlySummary = (readings, selectedMonth, mileage, fuelPrice, fuelPriceHistory = []) => {
   const days = new Map();
   sortReadingsAsc(readings)
-    .filter((reading) => !reading.queued && (!selectedMonth || monthKey(reading.date) === selectedMonth))
+    .filter((reading) => (
+      !reading.queued &&
+      isWorkingDay(reading.date) &&
+      (!selectedMonth || monthKey(reading.date) === selectedMonth)
+    ))
     .forEach((reading) => {
       const existing = days.get(reading.date) || [];
       existing.push(reading);
@@ -479,6 +491,10 @@ const getProblemFlags = ({ daySummary, routeHealth, review, now = new Date(), da
 const getMissingReadingAlerts = (employees, readingsByEmployee, date = today(), now = new Date()) => {
   const alerts = [];
 
+  if (!isWorkingDay(date)) {
+    return alerts;
+  }
+
   employees
     .filter((employee) => employee.active !== false)
     .forEach((employee) => {
@@ -510,19 +526,25 @@ const getMissingReadingAlerts = (employees, readingsByEmployee, date = today(), 
   return alerts;
 };
 
-const getDatesForMonth = (month, throughDate = today()) => {
+const getDatesForMonth = (month, throughDate = today(), options = {}) => {
   const [year, monthNumber] = month.split('-').map(Number);
   const isCurrentMonth = month === monthKey(throughDate);
   const endDay = isCurrentMonth ? Number(throughDate.slice(8, 10)) : new Date(year, monthNumber, 0).getDate();
 
-  return Array.from({ length: endDay }, (_, index) =>
+  const dates = Array.from({ length: endDay }, (_, index) =>
     `${year}-${String(monthNumber).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`,
   );
+
+  return options.workingOnly ? dates.filter(isWorkingDay) : dates;
 };
 
-const getRiderTodayStatus = (summary, now = new Date()) => {
+const getRiderTodayStatus = (summary, now = new Date(), date = today()) => {
   if (summary.complete) {
     return { label: 'Complete', tone: 'green' };
+  }
+
+  if (!isWorkingDay(date) && !summary.morning && !summary.evening) {
+    return { label: 'Off Day', tone: 'zinc' };
   }
 
   if (!summary.morning && isPastCutoff('morning', now)) {
@@ -641,7 +663,7 @@ const buildDailyCloseRows = ({
       const fuelPrice = getFuelPriceForDate(date, fuelPriceHistory, config.fuelPrice);
       const fuelUsed = mileage > 0 && daySummary.complete ? daySummary.distance / mileage : 0;
       const fuelCost = fuelUsed * fuelPrice;
-      const todayStatus = getRiderTodayStatus(daySummary, now);
+      const todayStatus = getRiderTodayStatus(daySummary, now, date);
       const displayStatus =
         review?.status ??
         (flags.some((flag) => flag.tone === 'red') ? 'problem' : daySummary.complete ? 'pending_review' : 'pending_review');
@@ -672,12 +694,14 @@ const buildReadingsMap = (rows) =>
   }, {});
 
 const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth, fuelPriceHistory = []) => {
+  const workingDates = selectedMonth ? getDatesForMonth(selectedMonth, today(), { workingOnly: true }) : [];
   const rows = [
     [`FleetLine Fleet Report - ${selectedMonth || 'All time'}`],
     [`Generated: ${new Date().toLocaleString()}`],
     [`Fuel price: ${config.currency} ${config.fuelPrice}/L`],
+    [`Working days: ${WORKING_DAYS_LABEL}; Sunday ignored`],
     [],
-    ['Rider', 'Username', 'Bike Plate', 'Bike Model', 'Mileage (km/L)', 'Readings', 'Completed Days', 'Monthly KM', 'Fuel (L)', `Monthly Fuel Cost (${config.currency})`],
+    ['Rider', 'Username', 'Bike Plate', 'Bike Model', 'Mileage (km/L)', 'Readings', 'Completed Days', 'Working Days', 'Missing Days', 'Partial Days', 'Monthly KM', 'Fuel (L)', `Monthly Fuel Cost (${config.currency})`],
   ];
 
   let grandKm = 0;
@@ -687,9 +711,12 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth, fue
   employees.forEach((employee) => {
     const mileage = Number(employee.mileage ?? config.defaultMileage);
     const readings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
-      (reading) => !selectedMonth || monthKey(reading.date) === selectedMonth,
+      (reading) => !reading.queued && isWorkingDay(reading.date) && (!selectedMonth || monthKey(reading.date) === selectedMonth),
     );
     const summary = getMonthlySummary(readings, selectedMonth, mileage, config.fuelPrice, fuelPriceHistory);
+    const workingSummaries = workingDates.map((date) => getDaySummary(readingsByEmployee[employee.id] || [], date));
+    const missingDays = workingSummaries.filter((day) => !day.morning && !day.evening).length;
+    const incompleteDays = workingSummaries.filter((day) => (day.morning || day.evening) && !day.complete).length;
 
     grandKm += summary.totalKm;
     grandFuel += summary.fuelUsed;
@@ -703,6 +730,9 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth, fue
       mileage,
       readings.length,
       summary.completedDays,
+      workingDates.length || summary.completedDays,
+      missingDays,
+      incompleteDays,
       summary.totalKm,
       summary.fuelUsed.toFixed(2),
       summary.cost.toFixed(2),
@@ -710,20 +740,21 @@ const buildFleetCSV = (employees, readingsByEmployee, config, selectedMonth, fue
   });
 
   rows.push([]);
-  rows.push(['FLEET TOTAL', '', '', '', '', '', '', grandKm, grandFuel.toFixed(2), grandCost.toFixed(2)]);
+  rows.push(['FLEET TOTAL', '', '', '', '', '', '', '', '', '', grandKm, grandFuel.toFixed(2), grandCost.toFixed(2)]);
   return rows;
 };
 
 const buildEmployeeCSV = (employee, readingsByEmployee, config, selectedMonth, fuelPriceHistory = []) => {
   const mileage = Number(employee.mileage ?? config.defaultMileage);
   const readings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
-    (reading) => !selectedMonth || monthKey(reading.date) === selectedMonth,
+    (reading) => !reading.queued && isWorkingDay(reading.date) && (!selectedMonth || monthKey(reading.date) === selectedMonth),
   );
 
   const rows = [
     [`FleetLine Report - ${employee.name} (${employee.bikePlate})`],
     [`Month: ${selectedMonth || 'All time'} | Generated: ${new Date().toLocaleString()}`],
     [`Mileage: ${mileage} km/L | Fuel price: ${config.currency} ${config.fuelPrice}/L`],
+    [`Working days: ${WORKING_DAYS_LABEL}; Sunday ignored`],
     [],
     ['Date', 'Morning Odo', 'Evening Odo', 'Daily Distance (km)', 'Fuel Used (L)', `Cost (${config.currency})`, 'Status'],
   ];
@@ -2336,10 +2367,9 @@ const AdminOverview = ({
   onSelectEmployee,
 }) => {
   const [now, setNow] = useState(() => new Date());
-  const [exported, setExported] = useState(false);
   const thisMonth = monthKey(today());
   const alertDate = today();
-  const monthDates = getDatesForMonth(thisMonth, alertDate);
+  const monthDates = getDatesForMonth(thisMonth, alertDate, { workingOnly: true });
   const missingAlerts = getMissingReadingAlerts(employees, readingsByEmployee, alertDate, now);
   const morningAlerts = missingAlerts.filter((alert) => alert.type === 'morning').length;
   const eveningAlerts = missingAlerts.filter((alert) => alert.type === 'evening').length;
@@ -2364,18 +2394,6 @@ const AdminOverview = ({
     return () => window.clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (!exported) return undefined;
-    const timeout = window.setTimeout(() => setExported(false), 1200);
-    return () => window.clearTimeout(timeout);
-  }, [exported]);
-
-  const handleExportMonthlyCSV = () => {
-    if (employees.length === 0) return;
-    downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth, fuelPriceHistory), `fleet_${thisMonth}.csv`);
-    setExported(true);
-  };
-
   const monthlyReportRows = employees.map((employee) => {
     const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
       (reading) => monthKey(reading.date) === thisMonth && !reading.queued,
@@ -2385,7 +2403,7 @@ const AdminOverview = ({
     const dailySummaries = monthDates.map((date) => getDaySummary(readingsByEmployee[employee.id] || [], date));
     const incompleteDays = dailySummaries.filter((day) => day.morning || day.evening).filter((day) => !day.complete).length;
     const todaySummary = getDaySummary(readingsByEmployee[employee.id] || [], alertDate);
-    const todayStatus = getRiderTodayStatus(todaySummary, now);
+    const todayStatus = getRiderTodayStatus(todaySummary, now, alertDate);
 
     return {
       employee,
@@ -2520,7 +2538,9 @@ const AdminOverview = ({
               {attentionItems.length > 0 ? `${attentionItems.length} Item${attentionItems.length === 1 ? '' : 's'} Need Attention` : 'All Clear'}
             </div>
             <div className="mt-1 text-xs text-zinc-500">
-              Morning alerts start after {MISSING_READING_CUTOFFS.morning.label}. Evening alerts start after {MISSING_READING_CUTOFFS.evening.label}.
+              {isWorkingDay(alertDate)
+                ? `Morning alerts start after ${MISSING_READING_CUTOFFS.morning.label}. Evening alerts start after ${MISSING_READING_CUTOFFS.evening.label}.`
+                : `Today is Sunday/off-day. Missing reading alerts are paused.`}
             </div>
           </div>
           <div className="text-right font-mono text-[10px] uppercase text-zinc-500">
@@ -2602,13 +2622,83 @@ const AdminOverview = ({
         </div>
       </div>
 
+    </div>
+  );
+};
+
+const AdminReportsPanel = ({
+  employees,
+  readingsByEmployee,
+  config,
+  fuelPriceHistory,
+  onSelectEmployee,
+}) => {
+  const [exported, setExported] = useState(false);
+  const reportMonth = monthKey(today());
+  const workingDates = getDatesForMonth(reportMonth, today(), { workingOnly: true });
+
+  useEffect(() => {
+    if (!exported) return undefined;
+    const timeout = window.setTimeout(() => setExported(false), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [exported]);
+
+  const handleExportMonthlyCSV = () => {
+    if (employees.length === 0) return;
+    downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, reportMonth, fuelPriceHistory), `fleet_${reportMonth}.csv`);
+    setExported(true);
+  };
+
+  const monthlyReportRows = employees.map((employee) => {
+    const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
+      (reading) => monthKey(reading.date) === reportMonth && isWorkingDay(reading.date) && !reading.queued,
+    );
+    const mileage = Number(employee.mileage ?? config.defaultMileage);
+    const summary = getMonthlySummary(monthlyReadings, reportMonth, mileage, config.fuelPrice, fuelPriceHistory);
+    const workingSummaries = workingDates.map((date) => getDaySummary(readingsByEmployee[employee.id] || [], date));
+    const completedWorkingDays = workingSummaries.filter((day) => day.complete).length;
+    const incompleteDays = workingSummaries.filter((day) => (day.morning || day.evening) && !day.complete).length;
+    const missingDays = workingSummaries.filter((day) => !day.morning && !day.evening).length;
+    const monthlyKm = summary.totalKm;
+    const fuelCost = summary.cost;
+
+    return {
+      employee,
+      summary,
+      monthlyKm,
+      fuelCost,
+      workingDays: workingDates.length,
+      completedWorkingDays,
+      incompleteDays,
+      missingDays,
+    };
+  });
+
+  const reportTotals = monthlyReportRows.reduce(
+    (accumulator, row) => {
+      accumulator.totalKm += row.monthlyKm;
+      accumulator.totalFuel += row.summary.fuelUsed;
+      accumulator.totalCost += row.fuelCost;
+      accumulator.completedDays += row.completedWorkingDays;
+      accumulator.incompleteDays += row.incompleteDays;
+      accumulator.missingDays += row.missingDays;
+      return accumulator;
+    },
+    { totalKm: 0, totalFuel: 0, totalCost: 0, completedDays: 0, incompleteDays: 0, missingDays: 0 },
+  );
+
+  return (
+    <div className="dashboard-3d space-y-4 p-5">
       <div className="ledger-panel-3d overflow-hidden border border-orange-500/30 p-5">
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">// Monthly Operations Ledger</div>
-            <div className="font-display text-4xl leading-none text-white">Fuel & KM Report</div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">// Reports</div>
+            <div className="font-display text-4xl leading-none text-white">Monthly Fuel & KM</div>
             <div className="mt-1 text-xs text-zinc-400">
-              Full month view for rider payments, fuel overhead, incomplete days, and cost control.
+              Admin-only monthly view for fuel overhead, rider attendance, completed work days, and CSV export.
+            </div>
+            <div className="mt-3 inline-flex border border-amber-500/30 bg-amber-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-amber-300">
+              Working days: {WORKING_DAYS_LABEL} | Sunday ignored
             </div>
           </div>
           <button
@@ -2625,50 +2715,48 @@ const AdminOverview = ({
         <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
           <div className="mini-surface-3d border border-orange-500/25 bg-black/60 p-3">
             <div className="font-mono text-[9px] uppercase text-zinc-500">Fleet KM</div>
-            <div className="font-display text-3xl leading-none text-amber-400">{fmtNum(Math.round(stats.totalKm))}</div>
-            <div className="font-mono text-[9px] uppercase text-zinc-600">this month</div>
+            <div className="font-display text-3xl leading-none text-amber-400">{fmtNum(Math.round(reportTotals.totalKm))}</div>
+            <div className="font-mono text-[9px] uppercase text-zinc-600">working days only</div>
           </div>
           <div className="mini-surface-3d border border-orange-500/25 bg-black/60 p-3">
             <div className="font-mono text-[9px] uppercase text-zinc-500">Fuel Cost</div>
             <div className="font-display text-3xl leading-none text-orange-500">
-              {fmtNum(Math.round(stats.totalCost))}
+              {fmtNum(Math.round(reportTotals.totalCost))}
             </div>
             <div className="font-mono text-[9px] uppercase text-zinc-600">{config.currency}</div>
           </div>
           <div className="mini-surface-3d border border-green-500/20 bg-black/60 p-3">
             <div className="font-mono text-[9px] uppercase text-zinc-500">Complete Days</div>
-            <div className="font-display text-3xl leading-none text-green-300">
-              {monthlyReportRows.reduce((sum, row) => sum + row.summary.completedDays, 0)}
-            </div>
-            <div className="font-mono text-[9px] uppercase text-zinc-600">verified pairs</div>
+            <div className="font-display text-3xl leading-none text-green-300">{reportTotals.completedDays}</div>
+            <div className="font-mono text-[9px] uppercase text-zinc-600">morning + evening</div>
           </div>
           <div className="mini-surface-3d border border-amber-400/25 bg-black/60 p-3">
-            <div className="font-mono text-[9px] uppercase text-zinc-500">Incomplete</div>
+            <div className="font-mono text-[9px] uppercase text-zinc-500">Missing / Incomplete</div>
             <div className="font-display text-3xl leading-none text-amber-300">
-              {monthlyReportRows.reduce((sum, row) => sum + row.incompleteDays, 0)}
+              {reportTotals.missingDays + reportTotals.incompleteDays}
             </div>
-            <div className="font-mono text-[9px] uppercase text-zinc-600">needs review</div>
+            <div className="font-mono text-[9px] uppercase text-zinc-600">working-day gaps</div>
           </div>
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-y border-orange-500/15 bg-black/35 px-3 py-3">
           <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
-            A-Z rider ledger | tap row for daily details | export from the top-right button
+            {new Date(`${reportMonth}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} ledger | tap rider for details | export from top-right
           </div>
         </div>
 
         {monthlyReportRows.length === 0 ? (
           <div className="empty-state p-10 text-center">
             <FileDown className="empty-icon mx-auto mb-3 h-10 w-10 text-orange-500/80" />
-            <div className="text-sm text-zinc-400">Add riders and submit readings to populate the ledger.</div>
+            <div className="text-sm text-zinc-400">Add riders and submit readings to populate the monthly report.</div>
           </div>
         ) : (
           <div className="ops-ledger-shell overflow-hidden border border-orange-500/20 p-3">
             <div className="overflow-x-auto">
-              <div className="min-w-[860px] space-y-3">
-                <div className="ops-ledger-header grid grid-cols-[2fr_0.7fr_0.8fr_0.8fr_0.9fr_0.7fr] rounded-2xl border border-orange-500/15 px-4 py-3 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
+              <div className="min-w-[920px] space-y-3">
+                <div className="ops-ledger-header grid grid-cols-[2fr_0.8fr_0.8fr_0.8fr_0.9fr_0.7fr] rounded-2xl border border-orange-500/15 px-4 py-3 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
                   <div>Rider</div>
-                  <div className="text-right">Days</div>
+                  <div className="text-right">Working Days</div>
                   <div className="text-right">KM</div>
                   <div className="text-right">Litres</div>
                   <div className="text-right">Cost</div>
@@ -2676,16 +2764,14 @@ const AdminOverview = ({
                 </div>
                 {[...monthlyReportRows]
                   .sort((left, right) => left.employee.name.localeCompare(right.employee.name))
-                  .map(({ employee, monthlyKm, fuelCost, summary, incompleteDays }) => {
-                    const completed = summary.completedDays;
-                    const totalDays = completed + incompleteDays;
+                  .map(({ employee, monthlyKm, fuelCost, summary, workingDays, completedWorkingDays, incompleteDays, missingDays }) => {
                     const costPerKm = monthlyKm > 0 ? fuelCost / monthlyKm : 0;
-                    const incomplete = incompleteDays > 0;
+                    const hasGaps = incompleteDays > 0 || missingDays > 0;
                     return (
                       <button
                         key={employee.id}
                         onClick={() => onSelectEmployee(employee.id)}
-                        className="ops-ledger-row grid w-full grid-cols-[2fr_0.7fr_0.8fr_0.8fr_0.9fr_0.7fr] items-center gap-3 border border-white/5 px-4 py-4 text-left transition-all"
+                        className="ops-ledger-row grid w-full grid-cols-[2fr_0.8fr_0.8fr_0.8fr_0.9fr_0.7fr] items-center gap-3 border border-white/5 px-4 py-4 text-left transition-all"
                       >
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="ledger-rider-avatar flex h-14 w-14 shrink-0 items-center justify-center border border-orange-500/35">
@@ -2695,11 +2781,11 @@ const AdminOverview = ({
                             <div className="flex flex-wrap items-center gap-2">
                               <div className="truncate font-display text-2xl leading-none text-white">{employee.name}</div>
                               <span className={`rounded-full border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest ${
-                                incomplete
+                                hasGaps
                                   ? 'border-amber-400/30 bg-amber-400/10 text-amber-300'
                                   : 'border-green-400/25 bg-green-400/10 text-green-300'
                               }`}>
-                                {incomplete ? 'needs review' : 'clean'}
+                                {hasGaps ? 'gaps' : 'clean'}
                               </span>
                             </div>
                             <div className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-blue-200/60">@{employee.username}</div>
@@ -2714,13 +2800,15 @@ const AdminOverview = ({
                           </div>
                         </div>
                         <div className="ops-metric-pill border border-green-400/10 px-3 py-2 text-right">
-                          <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">days</div>
-                          <div className={`font-display text-lg leading-none ${incomplete ? 'text-amber-300' : 'text-green-300'}`}>
-                            {completed}
-                            <span className="font-mono text-[10px] text-zinc-500">/{totalDays || completed}</span>
+                          <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">complete</div>
+                          <div className={`font-display text-lg leading-none ${hasGaps ? 'text-amber-300' : 'text-green-300'}`}>
+                            {completedWorkingDays}
+                            <span className="font-mono text-[10px] text-zinc-500">/{workingDays}</span>
                           </div>
-                          {incomplete ? (
-                            <div className="font-mono text-[8px] uppercase text-amber-400/80">{incompleteDays} gap{incompleteDays === 1 ? '' : 's'}</div>
+                          {hasGaps ? (
+                            <div className="font-mono text-[8px] uppercase text-amber-400/80">
+                              {missingDays} missing | {incompleteDays} partial
+                            </div>
                           ) : null}
                         </div>
                         <div className="ops-metric-pill border border-orange-500/10 px-3 py-2 text-right">
@@ -5044,6 +5132,15 @@ export default function App() {
                 onDeleteRouteSession={handleDeleteRouteSession}
               />
             ) : null}
+            {adminTab === 'reports' ? (
+              <AdminReportsPanel
+                employees={employees}
+                readingsByEmployee={readingsByEmployee}
+                config={config}
+                fuelPriceHistory={fuelPriceHistory}
+                onSelectEmployee={setSelectedEmployeeId}
+              />
+            ) : null}
             {adminTab === 'admins' ? <AdminsPanel admins={admins} onRefresh={refreshAdmins} onInvite={handleInviteAdmin} /> : null}
             {adminTab === 'settings' ? <AdminSettings config={config} fuelPriceHistory={fuelPriceHistory} onSave={handleSaveConfig} /> : null}
           </>
@@ -5056,6 +5153,7 @@ export default function App() {
               { id: 'close', label: 'Close', icon: PackageCheck },
               { id: 'employees', label: 'Riders', icon: Users },
               { id: 'routes', label: 'Routes', icon: Route },
+              { id: 'reports', label: 'Reports', icon: FileDown },
               { id: 'admins', label: 'Admins', icon: Shield },
               { id: 'settings', label: 'Settings', icon: Settings },
             ].map((tab) => (
