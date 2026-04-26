@@ -2131,16 +2131,6 @@ const AdminOverview = ({
         )}
       </div>
 
-      <div className="surface-3d border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent p-5">
-        <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-500">Monthly Fuel Cost</div>
-        <div className="font-display text-5xl text-orange-500">
-          {config.currency} {fmtNum(Math.round(stats.totalCost))}
-        </div>
-        <div className="mt-1 font-mono text-[10px] text-zinc-500">
-          Uses the saved fuel price for each submitted day.
-        </div>
-      </div>
-
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="surface-3d border border-zinc-800 bg-zinc-950 p-5">
           <div className="mb-4 flex items-center justify-between">
