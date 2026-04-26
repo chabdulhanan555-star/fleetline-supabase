@@ -1010,6 +1010,44 @@ const ThemeStyles = () => (
       50% { box-shadow: 0 0 0 6px rgba(217,119,6,0.18); }
     }
     .pulse-attention { animation: pulse-attention 2.2s ease-in-out infinite; }
+    @keyframes fade-up {
+      0% { opacity: 0; transform: translateY(8px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up {
+      animation: fade-up 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .fade-up { animation: none; }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .skeleton-shimmer {
+      background:
+        linear-gradient(90deg, rgba(255,253,247,0.04) 0%, rgba(217,119,6,0.10) 48%, rgba(255,253,247,0.04) 100%),
+        linear-gradient(155deg, rgba(23,32,42,0.95), rgba(8,12,17,0.95));
+      background-size: 200% 100%, 100% 100%;
+      animation: shimmer 1.6s linear infinite;
+      border-radius: 14px;
+    }
+    .odo-window {
+      display: inline-block;
+      overflow: hidden;
+      vertical-align: top;
+    }
+    .odo-strip {
+      transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+    .odo-strip > span {
+      display: block;
+      text-align: center;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .odo-strip { transition: none; }
+    }
     input:focus, textarea:focus, select:focus { outline: none; }
     .field-focus:focus {
       background-color: rgba(217, 119, 6, 0.06);
@@ -1086,6 +1124,87 @@ const BrandHeader = ({ onLogout, userName, subtitle }) => (
   </div>
 );
 
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+const parseAnimatedValue = (value) => {
+  if (typeof value === 'number') {
+    return { num: value, decimals: 0, useCommas: false };
+  }
+  const str = String(value ?? '');
+  const decimalMatch = str.match(/\.(\d+)/);
+  const decimals = decimalMatch ? decimalMatch[1].length : 0;
+  const useCommas = /\d{1,3}(,\d{3})+/.test(str);
+  const cleaned = str.replace(/,/g, '');
+  const num = Number(cleaned);
+  return {
+    num: Number.isFinite(num) ? num : 0,
+    decimals,
+    useCommas,
+  };
+};
+
+const formatAnimatedValue = (n, { decimals, useCommas }) => {
+  const fixed = decimals > 0 ? n.toFixed(decimals) : Math.round(n).toString();
+  if (!useCommas) return fixed;
+  const [whole, frac] = fixed.split('.');
+  const withCommas = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return frac ? `${withCommas}.${frac}` : withCommas;
+};
+
+const AnimatedCounter = ({ value, duration = 850 }) => {
+  const target = useMemo(() => parseAnimatedValue(value), [value]);
+  const [display, setDisplay] = useState(target.num);
+  const previousRef = useRef(target.num);
+
+  useEffect(() => {
+    const start = previousRef.current;
+    const end = target.num;
+    previousRef.current = end;
+    if (prefersReducedMotion() || start === end) {
+      setDisplay(end);
+      return undefined;
+    }
+    const startTime = performance.now();
+    let raf;
+    const tick = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - (1 - progress) ** 3;
+      setDisplay(start + (end - start) * eased);
+      if (progress < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [target.num, duration]);
+
+  return <>{formatAnimatedValue(display, target)}</>;
+};
+
+const Odometer = ({ value, length = 5, className = '' }) => {
+  const digits = String(value ?? '0').padStart(length, '0').slice(-length).split('');
+  return (
+    <div className={`inline-flex select-none ${className}`} aria-hidden="true">
+      {digits.map((digit, index) => {
+        const numericDigit = Number.isNaN(Number(digit)) ? 0 : Number(digit);
+        return (
+          <span key={index} className="odo-window relative leading-none" style={{ height: '1em', width: '0.62em' }}>
+            <span className="odo-strip flex flex-col" style={{ transform: `translateY(-${numericDigit * 10}%)`, height: '1000%' }}>
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
+                <span key={d} style={{ height: '10%' }}>{d}</span>
+              ))}
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
+const SkeletonCard = ({ className = 'h-24' }) => (
+  <div className={`skeleton-shimmer ${className}`} />
+);
+
 const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
   const colors = {
     orange: 'text-orange-500 border-orange-500/30 stat-tone-orange',
@@ -1094,6 +1213,12 @@ const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
     white: 'text-white border-zinc-700 stat-tone-white',
   };
   const [textColor, borderColor, toneClass] = (colors[accent] ?? colors.orange).split(' ');
+  const isAnimatable = (() => {
+    if (value == null) return false;
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string') return /^[\d.,]+$/.test(value.trim());
+    return false;
+  })();
 
   return (
     <div className={`surface-3d relative overflow-hidden border p-4 ${borderColor} ${toneClass}`}>
@@ -1105,7 +1230,9 @@ const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
         <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">{label}</div>
       </div>
       <div className="flex items-baseline gap-1.5">
-        <div className={`font-display text-3xl leading-none ${textColor}`}>{value}</div>
+        <div className={`font-display text-3xl leading-none tabular-nums ${textColor}`}>
+          {isAnimatable ? <AnimatedCounter value={value} /> : value}
+        </div>
         {unit ? <div className="font-mono text-[10px] uppercase text-zinc-500">{unit}</div> : null}
       </div>
     </div>
@@ -1408,9 +1535,29 @@ const Input = ({ label, icon: Icon, helper, ...props }) => (
 );
 
 const LoadingScreen = () => (
-  <div className="flex min-h-screen items-center justify-center bg-black">
+  <div className="grid-bg min-h-screen bg-black px-5 py-6 text-white font-body">
     <ThemeStyles />
-    <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+    <div className="mx-auto max-w-3xl space-y-4">
+      <div className="flex items-center gap-3">
+        <SkeletonCard className="h-12 w-12 rounded-md" />
+        <div className="flex-1 space-y-2">
+          <SkeletonCard className="h-3 w-24" />
+          <SkeletonCard className="h-5 w-40" />
+        </div>
+        <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+      </div>
+      <SkeletonCard className="h-40" />
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+        <SkeletonCard className="h-24" />
+        <SkeletonCard className="h-24" />
+        <SkeletonCard className="h-24" />
+        <SkeletonCard className="h-24" />
+        <SkeletonCard className="h-24" />
+        <SkeletonCard className="h-24" />
+      </div>
+      <SkeletonCard className="h-32" />
+      <SkeletonCard className="h-48" />
+    </div>
   </div>
 );
 
@@ -1772,14 +1919,18 @@ const DailyCloseSheet = ({ rows, config, onSelectEmployee, onPreviewPhoto, onSav
             <div className="text-sm text-zinc-400">Add riders to start building daily close sheets.</div>
           </div>
         ) : null}
-        {rows.map((row) => {
+        {rows.map((row, rowIndex) => {
           const key = getReviewKey(row.employee.id, row.date);
           const draft = getDraft(row);
           const reviewMeta = REVIEW_STATUS[draft.status] ?? REVIEW_STATUS.pending_review;
           const hasFlags = row.flags.length > 0;
 
           return (
-            <div key={key} className={`surface-3d border p-4 ${hasFlags ? 'border-amber-500/30' : 'border-zinc-800'}`}>
+            <div
+              key={key}
+              className={`surface-3d fade-up border p-4 ${hasFlags ? 'border-amber-500/30' : 'border-zinc-800'}`}
+              style={{ animationDelay: `${Math.min(rowIndex, 8) * 60}ms` }}
+            >
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <button onClick={() => onSelectEmployee(row.employee.id)} className="min-w-0 text-left">
                   <div className="font-display text-2xl leading-none text-white">{row.employee.name}</div>
@@ -2480,8 +2631,12 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
         </div>
       ) : (
         <div className="space-y-2">
-          {employees.map((employee) => (
-            <div key={employee.id} className="surface-3d lift-3d border border-zinc-800 bg-zinc-950 p-4">
+          {employees.map((employee, employeeIndex) => (
+            <div
+              key={employee.id}
+              className="surface-3d lift-3d fade-up border border-zinc-800 bg-zinc-950 p-4"
+              style={{ animationDelay: `${Math.min(employeeIndex, 10) * 60}ms` }}
+            >
               <div className="flex items-start gap-3">
                 <div className="flex h-12 w-12 items-center justify-center border border-orange-500/40 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
                   <User className="h-6 w-6 text-orange-500" />
@@ -3328,12 +3483,27 @@ const RiderSubmitView = ({
             <Gauge className="h-4 w-4 text-amber-500" />
             <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Odometer Reading (KM)</div>
           </div>
-          <input
-            value={reading}
-            onChange={(event) => setReading(event.target.value.replace(/[^\d]/g, ''))}
-            placeholder="00000"
-            className="w-full bg-transparent font-display text-5xl tracking-widest text-white"
-          />
+          <label className="relative flex w-full cursor-text items-center">
+            {reading ? (
+              <Odometer
+                value={reading}
+                length={Math.max(5, String(reading).length)}
+                className="font-display text-5xl tracking-widest text-white"
+              />
+            ) : (
+              <span className="font-display text-5xl tracking-widest text-zinc-700">00000</span>
+            )}
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="\d*"
+              value={reading}
+              onChange={(event) => setReading(event.target.value.replace(/[^\d]/g, ''))}
+              className="absolute inset-0 h-full w-full opacity-0"
+              autoComplete="off"
+              aria-label="Odometer reading"
+            />
+          </label>
           {lastReading ? (
             <div className="mt-2 font-mono text-[10px] uppercase text-zinc-500">
               Last: {fmtNum(lastReading.km)} km ({readingTypeLabel(lastReading)} | {fmtShort(lastReading.date)})
@@ -3497,7 +3667,11 @@ const RiderHistoryView = ({ employee, readings, config, onPreviewPhoto }) => {
               const previous = list[index + 1];
               const diff = previous ? reading.km - previous.km : null;
               return (
-                <div key={reading.id} className="surface-3d flex items-center gap-3 border border-zinc-800 bg-zinc-950 p-3">
+                <div
+                  key={reading.id}
+                  className="surface-3d fade-up flex items-center gap-3 border border-zinc-800 bg-zinc-950 p-3"
+                  style={{ animationDelay: `${Math.min(index, 12) * 50}ms` }}
+                >
                   <div className="flex h-10 w-10 flex-col items-center justify-center border border-orange-500/40">
                     <div className="font-display text-sm leading-none text-orange-500">{new Date(reading.date).getDate()}</div>
                     <div className="font-mono text-[8px] uppercase text-amber-500">
