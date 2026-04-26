@@ -2045,9 +2045,13 @@ const DailyCloseSheet = ({ rows, config, onSelectEmployee, onPreviewPhoto, onSav
         ) : null}
         {rows.map((row, rowIndex) => {
           const key = getReviewKey(row.employee.id, row.date);
-          const draft = getDraft(row);
-          const reviewMeta = REVIEW_STATUS[draft.status] ?? REVIEW_STATUS.pending_review;
           const hasFlags = row.flags.length > 0;
+          const flagMeta = hasFlags
+            ? {
+                label: `${row.flags.length} Problem Flag${row.flags.length === 1 ? '' : 's'}`,
+                tone: row.flags.some((flag) => flag.tone === 'red') ? 'red' : 'amber',
+              }
+            : { label: 'No Problem Flags', tone: 'green' };
 
           return (
             <div
@@ -2064,7 +2068,7 @@ const DailyCloseSheet = ({ rows, config, onSelectEmployee, onPreviewPhoto, onSav
                 </button>
                 <div className="flex flex-wrap justify-end gap-2">
                   <StatusBadge label={row.todayStatus.label} tone={row.todayStatus.tone} />
-                  <StatusBadge label={reviewMeta.label} tone={reviewMeta.tone} />
+                  <StatusBadge label={flagMeta.label} tone={flagMeta.tone} />
                 </div>
               </div>
 
@@ -2123,13 +2127,11 @@ const DailyCloseSheet = ({ rows, config, onSelectEmployee, onPreviewPhoto, onSav
                 </div>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                {row.flags.length > 0 ? (
-                  row.flags.map((flag) => <StatusBadge key={`${key}-${flag.id}`} label={flag.label} tone={flag.tone} />)
-                ) : (
-                  <StatusBadge label="No Problem Flags" tone="green" />
-                )}
-              </div>
+              {hasFlags ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {row.flags.map((flag) => <StatusBadge key={`${key}-${flag.id}`} label={flag.label} tone={flag.tone} />)}
+                </div>
+              ) : null}
             </div>
           );
         })}
