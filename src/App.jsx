@@ -1899,8 +1899,6 @@ const AdminOverview = ({
   fuelPriceHistory,
   dailyReviews,
   onSelectEmployee,
-  onPreviewPhoto,
-  onSaveDailyReview,
 }) => {
   const [now, setNow] = useState(() => new Date());
   const thisMonth = monthKey(today());
@@ -2052,14 +2050,6 @@ const AdminOverview = ({
         <StatCard label="Monthly KM" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
         <StatCard label="Fuel Used" value={stats.totalFuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
       </div>
-
-      <DailyCloseSheet
-        rows={dailyCloseRows}
-        config={config}
-        onSelectEmployee={onSelectEmployee}
-        onPreviewPhoto={onPreviewPhoto}
-        onSaveDailyReview={onSaveDailyReview}
-      />
 
       <div className="grid grid-cols-2 gap-2">
         <div className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
@@ -2308,6 +2298,69 @@ const AdminOverview = ({
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+const AdminCloseSheetPanel = ({
+  employees,
+  readingsByEmployee,
+  config,
+  routeSessions,
+  routePoints,
+  fuelPriceHistory,
+  dailyReviews,
+  onSelectEmployee,
+  onPreviewPhoto,
+  onSaveDailyReview,
+}) => {
+  const [now, setNow] = useState(() => new Date());
+  const closeDate = today();
+  const closeRows = buildDailyCloseRows({
+    employees,
+    readingsByEmployee,
+    config,
+    routeSessions,
+    routePoints,
+    dailyReviews,
+    fuelPriceHistory,
+    date: closeDate,
+    now,
+  });
+  const approvedCount = closeRows.filter((row) => row.review?.status === 'approved').length;
+  const problemCount = closeRows.filter((row) => row.flags.length > 0 || row.review?.status === 'problem').length;
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 60000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="dashboard-3d space-y-4 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Daily Close</div>
+          <div className="font-display text-3xl leading-none text-white">{fmtDate(closeDate)}</div>
+          <div className="mt-1 text-xs text-zinc-500">
+            Use this after evening submissions to approve clean rider days and mark problems before month-end payment.
+          </div>
+        </div>
+        <PackageCheck className="h-7 w-7 text-orange-500" />
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <StatCard label="Riders" value={closeRows.length} unit="today" icon={Users} accent="orange" />
+        <StatCard label="Approved" value={approvedCount} unit="days" icon={CheckCircle} accent="teal" />
+        <StatCard label="Problems" value={problemCount} unit="flags" icon={Shield} accent={problemCount ? 'gold' : 'white'} />
+      </div>
+
+      <DailyCloseSheet
+        rows={closeRows}
+        config={config}
+        onSelectEmployee={onSelectEmployee}
+        onPreviewPhoto={onPreviewPhoto}
+        onSaveDailyReview={onSaveDailyReview}
+      />
     </div>
   );
 };
@@ -3012,89 +3065,6 @@ const EmployeeRouteHistory = ({ employee, routeSessions = [], routePoints = [], 
   );
 };
 
-const AdminActivityTimeline = ({ employee, readings = [], routeSessions = [], dailyReviews = [], auditRows = [] }) => {
-  const matchesEmployeeAudit = (row) =>
-    row.entityId?.includes(employee.id) ||
-    row.before?.employee_id === employee.id ||
-    row.after?.employee_id === employee.id ||
-    row.before?.employeeId === employee.id ||
-    row.after?.employeeId === employee.id;
-
-  const events = [
-    ...readings.map((reading) => ({
-      id: `reading-${reading.id}`,
-      at: reading.submittedAt,
-      title: `${readingTypeLabel(reading)} submitted`,
-      detail: `${fmtNum(reading.km)} km | ${reading.photoPath ? 'photo saved' : 'photo missing'}`,
-      tone: reading.photoPath ? 'green' : 'amber',
-      icon: Camera,
-    })),
-    ...routeSessions
-      .filter((session) => session.employeeId === employee.id)
-      .map((session) => ({
-        id: `route-${session.id}`,
-        at: session.endedAt ?? session.startedAt,
-        title: session.status === 'active' ? 'Route active' : session.status === 'deleted' ? 'Route deleted' : 'Route closed',
-        detail: `${fmtDistance(session.totalDistanceM)} | ${session.pointCount ?? 0} GPS points`,
-        tone: session.status === 'active' ? 'amber' : session.status === 'deleted' ? 'red' : 'teal',
-        icon: Route,
-      })),
-    ...dailyReviews
-      .filter((review) => review.employeeId === employee.id)
-      .map((review) => ({
-        id: `review-${review.id}`,
-        at: review.updatedAt,
-        title: `Daily review: ${REVIEW_STATUS[review.status]?.label ?? review.status}`,
-        detail: `${fmtDate(review.date)}${review.notes ? ` | ${review.notes}` : ''}`,
-        tone: REVIEW_STATUS[review.status]?.tone ?? 'zinc',
-        icon: PackageCheck,
-      })),
-    ...auditRows
-      .filter(matchesEmployeeAudit)
-      .map((row) => ({
-        id: `audit-${row.id}`,
-        at: row.createdAt,
-        title: row.action,
-        detail: `${row.entityType} | ${row.entityId || employee.name}`,
-        tone: row.action?.includes('delete') ? 'red' : 'zinc',
-        icon: History,
-      })),
-  ]
-    .filter((event) => event.at)
-    .sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime())
-    .slice(0, 18);
-
-  return (
-    <div>
-      <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Admin Activity Timeline</div>
-      {events.length === 0 ? (
-        <div className="empty-state p-8 text-center">
-          <History className="empty-icon mx-auto mb-3 h-10 w-10 text-orange-500/80" />
-          <div className="text-sm text-zinc-400">No activity timeline yet for this rider.</div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {events.map((event) => {
-            const Icon = event.icon;
-            return (
-              <div key={event.id} className="surface-3d flex items-start gap-3 border border-zinc-800 bg-zinc-950 p-3">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center border ${statusClasses[event.tone] ?? statusClasses.zinc}`}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-white">{event.title}</div>
-                  <div className="mt-0.5 truncate font-mono text-[10px] uppercase text-zinc-500">{event.detail}</div>
-                </div>
-                <div className="font-mono text-[9px] uppercase text-zinc-600">{fmtDate(event.at)} {fmtTime(event.at)}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const EmployeeDetailView = ({
   employee,
   readings,
@@ -3102,8 +3072,6 @@ const EmployeeDetailView = ({
   routeSessions,
   routePoints,
   fuelPriceHistory,
-  dailyReviews,
-  auditRows,
   onLoadRoutePoints,
   onBack,
   onUpdateEmployee,
@@ -3210,14 +3178,6 @@ const EmployeeDetailView = ({
           routePoints={routePoints}
           selectedMonth={selectedMonth}
           onLoadRoutePoints={onLoadRoutePoints}
-        />
-
-        <AdminActivityTimeline
-          employee={employee}
-          readings={readings}
-          routeSessions={routeSessions}
-          dailyReviews={dailyReviews}
-          auditRows={auditRows}
         />
 
         <div>
@@ -4796,8 +4756,6 @@ export default function App() {
             routeSessions={routeSessions}
             routePoints={routePoints}
             fuelPriceHistory={fuelPriceHistory}
-            dailyReviews={dailyReviews}
-            auditRows={auditRows}
             onLoadRoutePoints={loadRoutePointsForSession}
             onBack={() => setSelectedEmployeeId(null)}
             onUpdateEmployee={handleSaveEmployee}
@@ -4810,6 +4768,18 @@ export default function App() {
           <>
             {adminTab === 'overview' ? (
               <AdminOverview
+                employees={employees}
+                readingsByEmployee={readingsByEmployee}
+                config={config}
+                routeSessions={routeSessions}
+                routePoints={routePoints}
+                fuelPriceHistory={fuelPriceHistory}
+                dailyReviews={dailyReviews}
+                onSelectEmployee={setSelectedEmployeeId}
+              />
+            ) : null}
+            {adminTab === 'close' ? (
+              <AdminCloseSheetPanel
                 employees={employees}
                 readingsByEmployee={readingsByEmployee}
                 config={config}
@@ -4868,9 +4838,10 @@ export default function App() {
         )}
 
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-orange-500/20 bg-black/95 shadow-2xl backdrop-blur">
-          <div className="grid grid-cols-7">
+          <div className="no-scrollbar flex overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 },
+              { id: 'close', label: 'Close', icon: PackageCheck },
               { id: 'employees', label: 'Riders', icon: Users },
               { id: 'routes', label: 'Routes', icon: Route },
               { id: 'admins', label: 'Admins', icon: Shield },
@@ -4884,7 +4855,7 @@ export default function App() {
                   setAdminTab(tab.id);
                   setSelectedEmployeeId(null);
                 }}
-                className={`relative flex min-w-0 flex-col items-center gap-0.5 px-1 py-3 transition-colors ${
+                className={`relative flex min-w-[72px] flex-1 flex-col items-center gap-0.5 px-1 py-3 transition-colors ${
                   adminTab === tab.id && !selectedEmployeeId ? 'text-orange-500' : 'text-zinc-500'
                 }`}
               >
