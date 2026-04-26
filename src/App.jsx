@@ -788,6 +788,7 @@ const ThemeStyles = () => (
         drop-shadow(0 14px 18px rgba(0,0,0,0.42))
         drop-shadow(0 0 18px rgba(217,119,6,0.26));
       transform: translateZ(24px);
+      animation: logo-power-on 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
     .dashboard-3d {
       perspective: 1400px;
@@ -881,6 +882,16 @@ const ThemeStyles = () => (
       background: linear-gradient(115deg, rgba(255,253,247,0.26), transparent 28%, rgba(255,253,247,0.08) 46%, transparent 66%);
       opacity: 0.95;
     }
+    .button-3d::after {
+      content: '';
+      position: absolute;
+      inset: -70% -35%;
+      z-index: -1;
+      background: linear-gradient(115deg, transparent 38%, rgba(255,253,247,0.34) 50%, transparent 62%);
+      transform: translateX(-120%) rotate(8deg);
+      opacity: 0;
+      pointer-events: none;
+    }
     .button-3d-primary {
       border: 1px solid rgba(254,243,199,0.48);
       background: linear-gradient(135deg, #f59e0b 0%, #d97706 48%, #92400e 100%);
@@ -968,6 +979,51 @@ const ThemeStyles = () => (
         0 12px 28px rgba(0,0,0,0.28),
         0 0 24px rgba(217,119,6,0.12);
     }
+    .modal-backdrop {
+      animation: modal-fade-in 180ms ease-out both;
+    }
+    .modal-shell {
+      animation: modal-rise-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      box-shadow: 0 30px 90px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,253,247,0.10);
+    }
+    .photo-preview-zoom {
+      animation: photo-zoom-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      box-shadow: 0 26px 80px rgba(0,0,0,0.5), 0 0 30px rgba(217,119,6,0.16);
+    }
+    .route-live-card {
+      box-shadow:
+        0 28px 70px rgba(0,0,0,0.42),
+        0 0 0 1px rgba(34,197,94,0.20),
+        0 0 28px rgba(34,197,94,0.12),
+        inset 0 1px 0 rgba(255,253,247,0.13);
+      animation: route-card-breathe 2.8s ease-in-out infinite;
+    }
+    .route-icon-live {
+      animation: route-icon-pulse 1.8s ease-in-out infinite;
+    }
+    .status-badge-alert {
+      position: relative;
+      overflow: hidden;
+    }
+    .status-badge-alert::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(110deg, transparent, rgba(255,253,247,0.20), transparent);
+      transform: translateX(-130%);
+      animation: badge-scan 2.6s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .export-burst {
+      animation: export-pop 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .export-burst::after {
+      opacity: 1;
+      animation: button-sheen 520ms ease-out both;
+    }
+    .toast-rise {
+      animation: toast-rise 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
     @media (hover: hover) and (pointer: fine) {
       .lift-3d:hover,
       .surface-3d:hover {
@@ -987,8 +1043,19 @@ const ThemeStyles = () => (
     }
     @media (prefers-reduced-motion: reduce) {
       .surface-3d,
-      .lift-3d {
+      .lift-3d,
+      .app-logo-4d,
+      .route-live-card,
+      .route-icon-live,
+      .pulse-attention,
+      .status-badge-alert,
+      .export-burst,
+      .toast-rise,
+      .modal-backdrop,
+      .modal-shell,
+      .photo-preview-zoom {
         transition: none;
+        animation: none;
       }
       .lift-3d:hover,
       .surface-3d:hover {
@@ -1010,6 +1077,52 @@ const ThemeStyles = () => (
       50% { box-shadow: 0 0 0 6px rgba(217,119,6,0.18); }
     }
     .pulse-attention { animation: pulse-attention 2.2s ease-in-out infinite; }
+    @keyframes logo-power-on {
+      0% { opacity: 0; transform: translateZ(24px) scale(0.92) rotateX(10deg); filter: drop-shadow(0 0 0 rgba(217,119,6,0)); }
+      45% { opacity: 1; transform: translateZ(24px) scale(1.05) rotateX(0deg); filter: drop-shadow(0 0 24px rgba(217,119,6,0.48)); }
+      100% {
+        opacity: 1;
+        transform: translateZ(24px) scale(1);
+        filter: drop-shadow(0 14px 18px rgba(0,0,0,0.42)) drop-shadow(0 0 18px rgba(217,119,6,0.26));
+      }
+    }
+    @keyframes modal-fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes modal-rise-in {
+      from { opacity: 0; transform: translateY(20px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes photo-zoom-in {
+      from { opacity: 0; transform: scale(0.96); filter: blur(2px); }
+      to { opacity: 1; transform: scale(1); filter: blur(0); }
+    }
+    @keyframes route-card-breathe {
+      0%, 100% { border-color: rgba(34,197,94,0.28); }
+      50% { border-color: rgba(245,158,11,0.42); box-shadow: 0 30px 76px rgba(0,0,0,0.44), 0 0 32px rgba(34,197,94,0.16), inset 0 1px 0 rgba(255,253,247,0.14); }
+    }
+    @keyframes route-icon-pulse {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(34,197,94,0)); }
+      50% { transform: scale(1.08); filter: drop-shadow(0 0 12px rgba(34,197,94,0.36)); }
+    }
+    @keyframes badge-scan {
+      0%, 64% { transform: translateX(-130%); }
+      100% { transform: translateX(130%); }
+    }
+    @keyframes button-sheen {
+      from { transform: translateX(-120%) rotate(8deg); }
+      to { transform: translateX(120%) rotate(8deg); }
+    }
+    @keyframes export-pop {
+      0% { transform: translateY(0) scale(1); }
+      35% { transform: translateY(-3px) scale(1.08); }
+      100% { transform: translateY(0) scale(1); }
+    }
+    @keyframes toast-rise {
+      from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
     @keyframes fade-up {
       0% { opacity: 0; transform: translateY(8px); }
       100% { opacity: 1; transform: translateY(0); }
@@ -1084,7 +1197,7 @@ const Toast = ({ toast }) => {
 
   return (
     <div className="fixed left-1/2 top-4 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
-      <div className={`bg-black/95 backdrop-blur border ${tones[toast.tone] || tones.info} px-4 py-3 shadow-2xl`}>
+      <div className={`toast-rise bg-black/95 backdrop-blur border ${tones[toast.tone] || tones.info} px-4 py-3 shadow-2xl`}>
         <div className="font-mono text-xs uppercase tracking-widest">{toast.message}</div>
       </div>
     </div>
@@ -1240,7 +1353,7 @@ const StatCard = ({ label, value, unit, icon: Icon, accent = 'orange' }) => {
 };
 
 const StatusBadge = ({ label, tone = 'zinc' }) => (
-  <span className={`inline-flex items-center rounded-full border px-2 py-1 font-mono text-[9px] uppercase tracking-widest ${statusClasses[tone] ?? statusClasses.zinc}`}>
+  <span className={`inline-flex items-center rounded-full border px-2 py-1 font-mono text-[9px] uppercase tracking-widest ${statusClasses[tone] ?? statusClasses.zinc} ${['red', 'amber'].includes(tone) ? 'status-badge-alert' : ''}`}>
     {label}
   </span>
 );
@@ -1487,8 +1600,8 @@ const Modal = ({ open, onClose, title, children }) => {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-5">
-      <div className="w-full max-w-lg border border-orange-500/25 bg-black sm:max-h-[90vh] sm:overflow-y-auto lg:max-w-2xl">
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-5">
+      <div className="modal-shell w-full max-w-lg border border-orange-500/25 bg-black sm:max-h-[90vh] sm:overflow-y-auto lg:max-w-2xl">
         <div className="flex items-center justify-between border-b border-orange-500/15 px-5 py-4">
           <div className="font-display text-2xl text-white">{title}</div>
           <button onClick={onClose} className="text-zinc-500 transition-colors hover:text-orange-500">
@@ -1512,7 +1625,7 @@ const PhotoPreviewModal = ({ photoModal, onClose }) => (
         BACK TO APP
       </button>
       {photoModal.url ? (
-        <img src={photoModal.url} alt={photoModal.path} className="max-h-[70vh] w-full border border-zinc-800 object-contain" />
+        <img src={photoModal.url} alt={photoModal.path} className="photo-preview-zoom max-h-[70vh] w-full border border-zinc-800 object-contain" />
       ) : null}
     </div>
   </Modal>
@@ -2025,6 +2138,7 @@ const AdminOverview = ({
   onSelectEmployee,
 }) => {
   const [now, setNow] = useState(() => new Date());
+  const [exported, setExported] = useState(false);
   const thisMonth = monthKey(today());
   const alertDate = today();
   const monthDates = getDatesForMonth(thisMonth, alertDate);
@@ -2051,6 +2165,18 @@ const AdminOverview = ({
     const interval = window.setInterval(() => setNow(new Date()), 60000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!exported) return undefined;
+    const timeout = window.setTimeout(() => setExported(false), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [exported]);
+
+  const handleExportMonthlyCSV = () => {
+    if (employees.length === 0) return;
+    downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth, fuelPriceHistory), `fleet_${thisMonth}.csv`);
+    setExported(true);
+  };
 
   const monthlyReportRows = employees.map((employee) => {
     const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
@@ -2289,12 +2415,12 @@ const AdminOverview = ({
           </div>
           <button
             type="button"
-            onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth, fuelPriceHistory), `fleet_${thisMonth}.csv`)}
+            onClick={handleExportMonthlyCSV}
             disabled={employees.length === 0}
-            title="Export monthly CSV"
-            className="button-3d button-3d-outline flex h-12 w-12 items-center justify-center border border-orange-500/30 bg-black/60 disabled:cursor-not-allowed disabled:opacity-40"
+            title={exported ? 'Monthly CSV exported' : 'Export monthly CSV'}
+            className={`button-3d button-3d-outline flex h-12 w-12 items-center justify-center border border-orange-500/30 bg-black/60 disabled:cursor-not-allowed disabled:opacity-40 ${exported ? 'export-burst' : ''}`}
           >
-            <FileDown className="h-5 w-5 text-orange-500" />
+            {exported ? <CheckCircle className="h-5 w-5 text-green-300" /> : <FileDown className="h-5 w-5 text-orange-500" />}
           </button>
         </div>
 
@@ -3360,9 +3486,9 @@ const RiderSubmitView = ({
         )}
       </div>
 
-      <div className={`surface-3d border p-4 ${statusClasses[routeTone]}`}>
+      <div className={`surface-3d border p-4 ${statusClasses[routeTone]} ${routeStatus === 'active' ? 'route-live-card' : ''}`}>
         <div className="flex items-start gap-3">
-          <div className={`flex h-10 w-10 items-center justify-center border ${statusClasses[routeTone]}`}>
+          <div className={`flex h-10 w-10 items-center justify-center border ${statusClasses[routeTone]} ${routeStatus === 'active' ? 'route-icon-live' : ''}`}>
             <MapPin className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
