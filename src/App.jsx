@@ -2630,12 +2630,25 @@ const AdminReportsPanel = ({
   employees,
   readingsByEmployee,
   config,
+  routeSessions,
+  routePoints,
   fuelPriceHistory,
+  dailyReviews,
   onSelectEmployee,
+  onPreviewPhoto,
+  onSaveDailyReview,
 }) => {
   const [exported, setExported] = useState(false);
-  const reportMonth = monthKey(today());
-  const workingDates = getDatesForMonth(reportMonth, today(), { workingOnly: true });
+  const [reportMode, setReportMode] = useState('month');
+  const [reportMonth, setReportMonth] = useState(monthKey(today()));
+  const [reportDate, setReportDate] = useState(today());
+  const [riderFilter, setRiderFilter] = useState('all');
+  const activeReportMonth = reportMonth || monthKey(today());
+  const activeReportDate = reportDate || today();
+  const workingDates = getDatesForMonth(activeReportMonth, today(), { workingOnly: true });
+  const filteredEmployees = riderFilter === 'all'
+    ? employees
+    : employees.filter((employee) => employee.id === riderFilter);
 
   useEffect(() => {
     if (!exported) return undefined;
@@ -2644,17 +2657,17 @@ const AdminReportsPanel = ({
   }, [exported]);
 
   const handleExportMonthlyCSV = () => {
-    if (employees.length === 0) return;
-    downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, reportMonth, fuelPriceHistory), `fleet_${reportMonth}.csv`);
+    if (filteredEmployees.length === 0) return;
+    downloadCSV(buildFleetCSV(filteredEmployees, readingsByEmployee, config, activeReportMonth, fuelPriceHistory), `fleet_${activeReportMonth}.csv`);
     setExported(true);
   };
 
-  const monthlyReportRows = employees.map((employee) => {
+  const monthlyReportRows = filteredEmployees.map((employee) => {
     const monthlyReadings = sortReadingsAsc(readingsByEmployee[employee.id] || []).filter(
-      (reading) => monthKey(reading.date) === reportMonth && isWorkingDay(reading.date) && !reading.queued,
+      (reading) => monthKey(reading.date) === activeReportMonth && isWorkingDay(reading.date) && !reading.queued,
     );
     const mileage = Number(employee.mileage ?? config.defaultMileage);
-    const summary = getMonthlySummary(monthlyReadings, reportMonth, mileage, config.fuelPrice, fuelPriceHistory);
+    const summary = getMonthlySummary(monthlyReadings, activeReportMonth, mileage, config.fuelPrice, fuelPriceHistory);
     const workingSummaries = workingDates.map((date) => getDaySummary(readingsByEmployee[employee.id] || [], date));
     const completedWorkingDays = workingSummaries.filter((day) => day.complete).length;
     const incompleteDays = workingSummaries.filter((day) => (day.morning || day.evening) && !day.complete).length;
@@ -2686,6 +2699,27 @@ const AdminReportsPanel = ({
     },
     { totalKm: 0, totalFuel: 0, totalCost: 0, completedDays: 0, incompleteDays: 0, missingDays: 0 },
   );
+  const dailyReportRows = buildDailyCloseRows({
+    employees: filteredEmployees,
+    readingsByEmployee,
+    config,
+    routeSessions,
+    routePoints,
+    dailyReviews,
+    fuelPriceHistory,
+    date: activeReportDate,
+    now: new Date(),
+  });
+  const dailyTotals = dailyReportRows.reduce(
+    (accumulator, row) => {
+      accumulator.complete += row.daySummary.complete ? 1 : 0;
+      accumulator.km += row.daySummary.complete ? row.daySummary.distance : 0;
+      accumulator.fuelCost += row.fuelCost;
+      accumulator.flags += row.flags.length;
+      return accumulator;
+    },
+    { complete: 0, km: 0, fuelCost: 0, flags: 0 },
+  );
 
   return (
     <div className="dashboard-3d space-y-4 p-5">
@@ -2695,23 +2729,117 @@ const AdminReportsPanel = ({
             <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">// Reports</div>
             <div className="font-display text-4xl leading-none text-white">Monthly Fuel & KM</div>
             <div className="mt-1 text-xs text-zinc-400">
-              Admin-only monthly view for fuel overhead, rider attendance, completed work days, and CSV export.
+              Filter by month, exact date, or rider to inspect previous records without cluttering Overview.
             </div>
             <div className="mt-3 inline-flex border border-amber-500/30 bg-amber-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-amber-300">
               Working days: {WORKING_DAYS_LABEL} | Sunday ignored
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleExportMonthlyCSV}
-            disabled={employees.length === 0}
-            title={exported ? 'Monthly CSV exported' : 'Export monthly CSV'}
-            className={`button-3d button-3d-outline flex h-12 w-12 items-center justify-center border border-orange-500/30 bg-black/60 disabled:cursor-not-allowed disabled:opacity-40 ${exported ? 'export-burst' : ''}`}
-          >
-            {exported ? <CheckCircle className="h-5 w-5 text-green-300" /> : <FileDown className="h-5 w-5 text-orange-500" />}
-          </button>
+          {reportMode === 'month' ? (
+            <button
+              type="button"
+              onClick={handleExportMonthlyCSV}
+              disabled={filteredEmployees.length === 0}
+              title={exported ? 'Monthly CSV exported' : 'Export monthly CSV'}
+              className={`button-3d button-3d-outline flex h-12 w-12 items-center justify-center border border-orange-500/30 bg-black/60 disabled:cursor-not-allowed disabled:opacity-40 ${exported ? 'export-burst' : ''}`}
+            >
+              {exported ? <CheckCircle className="h-5 w-5 text-green-300" /> : <FileDown className="h-5 w-5 text-orange-500" />}
+            </button>
+          ) : (
+            <PackageCheck className="h-7 w-7 text-orange-500" />
+          )}
         </div>
 
+        <div className="mb-5 grid gap-3 border-y border-orange-500/15 bg-black/35 px-3 py-4 md:grid-cols-3">
+          <label className="block">
+            <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">Report Type</div>
+            <select
+              value={reportMode}
+              onChange={(event) => setReportMode(event.target.value)}
+              className="field-focus min-h-[48px] w-full border border-zinc-800 bg-black px-3 py-3 font-mono text-xs uppercase tracking-widest text-white transition-colors focus:border-orange-500"
+            >
+              <option value="month">Monthly Ledger</option>
+              <option value="day">Daily Report</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">
+              {reportMode === 'month' ? 'Report Month' : 'Report Date'}
+            </div>
+            {reportMode === 'month' ? (
+              <input
+                type="month"
+                value={activeReportMonth}
+                onChange={(event) => setReportMonth(event.target.value)}
+                className="field-focus min-h-[48px] w-full border border-zinc-800 bg-black px-3 py-3 font-mono text-sm text-white transition-colors focus:border-orange-500"
+              />
+            ) : (
+              <input
+                type="date"
+                value={activeReportDate}
+                onChange={(event) => setReportDate(event.target.value)}
+                className="field-focus min-h-[48px] w-full border border-zinc-800 bg-black px-3 py-3 font-mono text-sm text-white transition-colors focus:border-orange-500"
+              />
+            )}
+          </label>
+          <label className="block">
+            <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">Rider Filter</div>
+            <select
+              value={riderFilter}
+              onChange={(event) => setRiderFilter(event.target.value)}
+              className="field-focus min-h-[48px] w-full border border-zinc-800 bg-black px-3 py-3 font-mono text-xs uppercase tracking-widest text-white transition-colors focus:border-orange-500"
+            >
+              <option value="all">All Riders</option>
+              {employees
+                .slice()
+                .sort((left, right) => left.name.localeCompare(right.name))
+                .map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name} | {employee.bikePlate}
+                  </option>
+                ))}
+            </select>
+          </label>
+        </div>
+
+        {reportMode === 'day' ? (
+          <>
+            <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+              <div className="mini-surface-3d border border-orange-500/25 bg-black/60 p-3">
+                <div className="font-mono text-[9px] uppercase text-zinc-500">Report Date</div>
+                <div className="font-display text-2xl leading-none text-amber-400">{fmtShort(activeReportDate)}</div>
+                <div className="font-mono text-[9px] uppercase text-zinc-600">
+                  {isWorkingDay(activeReportDate) ? 'working day' : 'off-day / Sunday'}
+                </div>
+              </div>
+              <div className="mini-surface-3d border border-green-500/20 bg-black/60 p-3">
+                <div className="font-mono text-[9px] uppercase text-zinc-500">Complete</div>
+                <div className="font-display text-3xl leading-none text-green-300">{dailyTotals.complete}</div>
+                <div className="font-mono text-[9px] uppercase text-zinc-600">rider days</div>
+              </div>
+              <div className="mini-surface-3d border border-orange-500/25 bg-black/60 p-3">
+                <div className="font-mono text-[9px] uppercase text-zinc-500">Daily KM</div>
+                <div className="font-display text-3xl leading-none text-amber-400">{fmtNum(Math.round(dailyTotals.km))}</div>
+                <div className="font-mono text-[9px] uppercase text-zinc-600">odometer total</div>
+              </div>
+              <div className="mini-surface-3d border border-amber-400/25 bg-black/60 p-3">
+                <div className="font-mono text-[9px] uppercase text-zinc-500">Flags / Cost</div>
+                <div className="font-display text-3xl leading-none text-orange-500">{dailyTotals.flags}</div>
+                <div className="font-mono text-[9px] uppercase text-zinc-600">
+                  {config.currency} {fmtNum(Math.round(dailyTotals.fuelCost))}
+                </div>
+              </div>
+            </div>
+            <DailyCloseSheet
+              rows={dailyReportRows}
+              config={config}
+              onSelectEmployee={onSelectEmployee}
+              onPreviewPhoto={onPreviewPhoto}
+              onSaveDailyReview={onSaveDailyReview}
+            />
+          </>
+        ) : (
+          <>
         <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
           <div className="mini-surface-3d border border-orange-500/25 bg-black/60 p-3">
             <div className="font-mono text-[9px] uppercase text-zinc-500">Fleet KM</div>
@@ -2741,7 +2869,7 @@ const AdminReportsPanel = ({
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-y border-orange-500/15 bg-black/35 px-3 py-3">
           <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
-            {new Date(`${reportMonth}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} ledger | tap rider for details | export from top-right
+            {new Date(`${activeReportMonth}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} ledger | tap rider for details | export from top-right
           </div>
         </div>
 
@@ -2832,10 +2960,12 @@ const AdminReportsPanel = ({
                         </div>
                       </button>
                     );
-                  })}
+                })}
               </div>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>
@@ -5137,8 +5267,13 @@ export default function App() {
                 employees={employees}
                 readingsByEmployee={readingsByEmployee}
                 config={config}
+                routeSessions={routeSessions}
+                routePoints={routePoints}
                 fuelPriceHistory={fuelPriceHistory}
+                dailyReviews={dailyReviews}
                 onSelectEmployee={setSelectedEmployeeId}
+                onPreviewPhoto={handlePreviewPhoto}
+                onSaveDailyReview={handleSaveDailyReview}
               />
             ) : null}
             {adminTab === 'admins' ? <AdminsPanel admins={admins} onRefresh={refreshAdmins} onInvite={handleInviteAdmin} /> : null}
