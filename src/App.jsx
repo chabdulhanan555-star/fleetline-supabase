@@ -945,6 +945,43 @@ const ThemeStyles = () => (
       border-radius: 18px;
       box-shadow: 0 24px 48px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,253,247,0.08);
     }
+    .ops-ledger-shell {
+      border-radius: 26px;
+      background:
+        linear-gradient(180deg, rgba(255,253,247,0.04), transparent 18%),
+        radial-gradient(circle at top left, rgba(217,119,6,0.12), transparent 28rem),
+        rgba(5,8,12,0.78);
+      box-shadow:
+        inset 0 1px 0 rgba(255,253,247,0.1),
+        0 24px 70px rgba(0,0,0,0.44);
+    }
+    .ops-ledger-header {
+      background:
+        linear-gradient(90deg, rgba(217,119,6,0.2), rgba(217,119,6,0.06) 42%, rgba(15,118,110,0.08));
+    }
+    .ops-ledger-row {
+      border-radius: 20px;
+      background:
+        radial-gradient(circle at 8% 50%, rgba(217,119,6,0.14), transparent 17rem),
+        linear-gradient(135deg, rgba(23,32,42,0.96), rgba(5,8,12,0.94));
+      box-shadow:
+        inset 0 1px 0 rgba(255,253,247,0.08),
+        0 14px 30px rgba(0,0,0,0.28);
+    }
+    .ops-ledger-row:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        inset 0 1px 0 rgba(255,253,247,0.1),
+        0 18px 36px rgba(0,0,0,0.34),
+        0 0 0 1px rgba(217,119,6,0.26);
+    }
+    .ops-metric-pill {
+      border-radius: 16px;
+      background:
+        linear-gradient(180deg, rgba(255,253,247,0.05), rgba(255,253,247,0.01)),
+        rgba(5,8,12,0.68);
+      box-shadow: inset 0 1px 0 rgba(255,253,247,0.08);
+    }
     .ledger-panel-3d {
       border-radius: 24px;
       background:
@@ -2544,10 +2581,10 @@ const AdminOverview = ({
             <div className="text-sm text-zinc-400">Add riders and submit readings to populate the ledger.</div>
           </div>
         ) : (
-          <div className="table-3d overflow-hidden border border-orange-500/20 bg-black/65">
+          <div className="ops-ledger-shell overflow-hidden border border-orange-500/20 p-3">
             <div className="overflow-x-auto">
-              <div className="min-w-[760px]">
-                <div className="grid grid-cols-[1.8fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] border-b border-orange-500/15 bg-orange-500/10 px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
+              <div className="min-w-[860px] space-y-3">
+                <div className="ops-ledger-header grid grid-cols-[2fr_0.7fr_0.8fr_0.8fr_0.9fr_0.7fr] rounded-2xl border border-orange-500/15 px-4 py-3 font-mono text-[9px] uppercase tracking-widest text-amber-500/80">
                   <div>Rider</div>
                   <div className="text-right">Days</div>
                   <div className="text-right">KM</div>
@@ -2566,16 +2603,25 @@ const AdminOverview = ({
                       <button
                         key={employee.id}
                         onClick={() => onSelectEmployee(employee.id)}
-                        className="ledger-row-3d grid w-full grid-cols-[1.8fr_0.6fr_0.7fr_0.7fr_0.9fr_0.7fr] items-center gap-3 border-b border-white/5 px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-orange-500/10"
+                        className="ops-ledger-row grid w-full grid-cols-[2fr_0.7fr_0.8fr_0.8fr_0.9fr_0.7fr] items-center gap-3 border border-white/5 px-4 py-4 text-left transition-all"
                       >
                         <div className="flex min-w-0 items-center gap-3">
-                          <div className="ledger-rider-avatar flex h-11 w-11 shrink-0 items-center justify-center border border-orange-500/35">
+                          <div className="ledger-rider-avatar flex h-14 w-14 shrink-0 items-center justify-center border border-orange-500/35">
                             <User className="h-5 w-5 text-orange-500" />
                           </div>
                           <div className="min-w-0">
-                            <div className="truncate font-semibold text-white">{employee.name}</div>
-                            <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">@{employee.username}</div>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[9px] uppercase text-zinc-500">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="truncate font-display text-2xl leading-none text-white">{employee.name}</div>
+                              <span className={`rounded-full border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest ${
+                                incomplete
+                                  ? 'border-amber-400/30 bg-amber-400/10 text-amber-300'
+                                  : 'border-green-400/25 bg-green-400/10 text-green-300'
+                              }`}>
+                                {incomplete ? 'needs review' : 'clean'}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-blue-200/60">@{employee.username}</div>
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase text-zinc-400">
                               <span className="flex items-center gap-1">
                                 <Bike className="h-3 w-3 text-amber-500" /> {employee.bikePlate || 'no plate'}
                               </span>
@@ -2585,7 +2631,8 @@ const AdminOverview = ({
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="ops-metric-pill border border-green-400/10 px-3 py-2 text-right">
+                          <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">days</div>
                           <div className={`font-display text-lg leading-none ${incomplete ? 'text-amber-300' : 'text-green-300'}`}>
                             {completed}
                             <span className="font-mono text-[10px] text-zinc-500">/{totalDays || completed}</span>
@@ -2594,14 +2641,24 @@ const AdminOverview = ({
                             <div className="font-mono text-[8px] uppercase text-amber-400/80">{incompleteDays} gap{incompleteDays === 1 ? '' : 's'}</div>
                           ) : null}
                         </div>
-                        <div className="text-right font-display text-lg leading-none text-amber-400">{fmtNum(Math.round(monthlyKm))}</div>
-                        <div className="text-right font-display text-lg leading-none text-zinc-200">{summary.fuelUsed.toFixed(1)}</div>
-                        <div className="text-right">
-                          <div className="font-display text-lg leading-none text-orange-500">{fmtNum(Math.round(fuelCost))}</div>
+                        <div className="ops-metric-pill border border-orange-500/10 px-3 py-2 text-right">
+                          <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">km</div>
+                          <div className="font-display text-2xl leading-none text-amber-400">{fmtNum(Math.round(monthlyKm))}</div>
+                        </div>
+                        <div className="ops-metric-pill border border-zinc-700/50 px-3 py-2 text-right">
+                          <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">litres</div>
+                          <div className="font-display text-2xl leading-none text-zinc-100">{summary.fuelUsed.toFixed(1)}</div>
+                        </div>
+                        <div className="ops-metric-pill border border-orange-500/15 px-3 py-2 text-right">
+                          <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">fuel cost</div>
+                          <div className="font-display text-2xl leading-none text-orange-500">{fmtNum(Math.round(fuelCost))}</div>
                           <div className="font-mono text-[8px] uppercase text-zinc-500">{config.currency}</div>
                         </div>
-                        <div className="text-right font-mono text-[11px] tabular-nums text-zinc-300">
-                          {monthlyKm > 0 ? costPerKm.toFixed(1) : '-'}
+                        <div className="ops-metric-pill border border-blue-300/10 px-3 py-2 text-right">
+                          <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">{config.currency}/km</div>
+                          <div className="font-mono text-sm font-bold tabular-nums text-blue-100">
+                            {monthlyKm > 0 ? costPerKm.toFixed(1) : '-'}
+                          </div>
                         </div>
                       </button>
                     );
