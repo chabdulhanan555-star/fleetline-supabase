@@ -51,7 +51,6 @@ import {
   isDemoMode,
   isSupabaseConfigured,
   listAdmins,
-  listAuditLog,
   listRoutePointsForSession,
   onSessionChange,
   resetRiderPin,
@@ -2819,84 +2818,6 @@ const AdminsPanel = ({ admins, onRefresh, onInvite }) => {
   );
 };
 
-const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRefresh }) => (
-  <div className="dashboard-3d space-y-4 p-5">
-    <div className="flex items-center justify-between">
-      <div>
-        <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// History</div>
-        <div className="font-display text-3xl leading-none text-white">Audit Log</div>
-      </div>
-      <button
-        onClick={onRefresh}
-        className="mini-surface-3d flex h-10 w-10 items-center justify-center border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-orange-500 hover:text-orange-500"
-      >
-        <RefreshCw className="h-4 w-4" />
-      </button>
-    </div>
-
-    <div className="space-y-2">
-      {auditRows.map((row) => (
-        <details key={row.id} className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
-          <summary className="cursor-pointer list-none">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold text-white">{row.action}</div>
-                <div className="mt-1 font-mono text-[10px] uppercase text-zinc-500">
-                  {row.entityType} | {row.entityId || '-'} | {fmtDate(row.createdAt)}
-                </div>
-              </div>
-              <History className="mt-1 h-4 w-4 text-amber-400" />
-            </div>
-          </summary>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div>
-              <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">Before</div>
-              <pre className="mini-surface-3d overflow-x-auto whitespace-pre-wrap border border-zinc-800 bg-black p-3 text-xs text-zinc-300">
-                {JSON.stringify(row.before, null, 2) || 'null'}
-              </pre>
-            </div>
-            <div>
-              <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">After</div>
-              <pre className="mini-surface-3d overflow-x-auto whitespace-pre-wrap border border-zinc-800 bg-black p-3 text-xs text-zinc-300">
-                {JSON.stringify(row.after, null, 2) || 'null'}
-              </pre>
-            </div>
-          </div>
-        </details>
-      ))}
-      {auditRows.length === 0 ? (
-        <div className="empty-state p-10 text-center">
-          <History className="empty-icon mx-auto mb-4 h-12 w-12 text-orange-500/80" />
-          <div className="mb-1 font-display text-2xl text-white">No Audit Rows</div>
-          <div className="text-sm text-zinc-400">Activity by admins will appear here as it happens.</div>
-        </div>
-      ) : null}
-    </div>
-
-    <div className="surface-3d flex items-center justify-between border border-zinc-800 bg-zinc-950 p-3">
-      <div className="font-mono text-[10px] uppercase text-zinc-500">
-        Page {page + 1} | Showing {auditRows.length} of {auditCount}
-      </div>
-      <div className="flex gap-2">
-        <button
-          onClick={() => onPageChange(Math.max(0, page - 1))}
-          disabled={page === 0}
-          className="mini-surface-3d border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400 disabled:opacity-40"
-        >
-          Prev
-        </button>
-        <button
-          onClick={() => onPageChange(page + 1)}
-          disabled={(page + 1) * pageSize >= auditCount}
-          className="mini-surface-3d border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400 disabled:opacity-40"
-        >
-          Next
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
 const EmployeeRouteHistory = ({ employee, routeSessions = [], routePoints = [], selectedMonth, onLoadRoutePoints }) => {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
@@ -3663,9 +3584,6 @@ export default function App() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [queuedItems, setQueuedItems] = useState([]);
   const [admins, setAdmins] = useState([]);
-  const [auditRows, setAuditRows] = useState([]);
-  const [auditCount, setAuditCount] = useState(0);
-  const [auditPage, setAuditPage] = useState(0);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [adminTab, setAdminTab] = useState('overview');
@@ -3780,23 +3698,6 @@ export default function App() {
     loadAdminData();
     return undefined;
   }, [session]);
-
-  useEffect(() => {
-    if (session?.role !== 'admin') return undefined;
-
-    const loadAudit = async () => {
-      try {
-        const result = await listAuditLog({ page: auditPage, pageSize: 20 });
-        setAuditRows(result.rows);
-        setAuditCount(result.count);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-
-    loadAudit();
-    return undefined;
-  }, [session, auditPage]);
 
   const showToast = (message, tone = 'info') => setToast({ message, tone });
 
@@ -4126,12 +4027,6 @@ export default function App() {
     setAdmins(await listAdmins());
   };
 
-  const refreshAudit = async (page = auditPage) => {
-    const result = await listAuditLog({ page, pageSize: 20 });
-    setAuditRows(result.rows);
-    setAuditCount(result.count);
-  };
-
   const loadRoutePointsForSession = async (sessionId) => {
     if (!sessionId || session?.role !== 'admin') return;
 
@@ -4388,7 +4283,6 @@ export default function App() {
   const handleDeleteReading = async (reading) => {
     try {
       await deleteReading(reading.id);
-      await refreshAudit();
       showToast('Reading and photo deleted.', 'success');
     } catch (error) {
       console.error(error);
@@ -4403,7 +4297,6 @@ export default function App() {
       await deleteRouteSession(sessionId);
       setRouteSessions((current) => current.filter((sessionRow) => sessionRow.id !== sessionId));
       setRoutePoints((current) => current.filter((point) => point.sessionId !== sessionId));
-      await refreshAudit();
       showToast('Route session deleted.', 'success');
     } catch (error) {
       console.error(error);
@@ -4424,7 +4317,6 @@ export default function App() {
     try {
       await resetRiderPin(employee.id, nextPin);
       showToast(`PIN reset for ${employee.name}.`, 'success');
-      await refreshAudit();
       return true;
     } catch (error) {
       console.error(error);
@@ -4449,7 +4341,6 @@ export default function App() {
   const handleSaveDailyReview = async (review) => {
     try {
       await saveDailyReview(review);
-      await refreshAudit();
       showToast('Daily close review saved.', 'success');
     } catch (error) {
       console.error(error);
@@ -4462,7 +4353,6 @@ export default function App() {
     try {
       await inviteAdmin(email, window.location.origin);
       await refreshAdmins();
-      await refreshAudit();
       showToast('Admin invite sent.', 'success');
     } catch (error) {
       console.error(error);
@@ -4634,16 +4524,6 @@ export default function App() {
               />
             ) : null}
             {adminTab === 'admins' ? <AdminsPanel admins={admins} onRefresh={refreshAdmins} onInvite={handleInviteAdmin} /> : null}
-            {adminTab === 'audit' ? (
-              <AuditPanel
-                auditRows={auditRows}
-                auditCount={auditCount}
-                page={auditPage}
-                pageSize={20}
-                onPageChange={setAuditPage}
-                onRefresh={() => refreshAudit(auditPage)}
-              />
-            ) : null}
             {adminTab === 'settings' ? <AdminSettings config={config} fuelPriceHistory={fuelPriceHistory} onSave={handleSaveConfig} /> : null}
           </>
         )}
@@ -4656,7 +4536,6 @@ export default function App() {
               { id: 'employees', label: 'Riders', icon: Users },
               { id: 'routes', label: 'Routes', icon: Route },
               { id: 'admins', label: 'Admins', icon: Shield },
-              { id: 'audit', label: 'Audit', icon: History },
               { id: 'settings', label: 'Settings', icon: Settings },
             ].map((tab) => (
               <button
