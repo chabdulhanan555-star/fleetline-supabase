@@ -1709,18 +1709,29 @@ const RouteSessionCard = ({ session, employee, points, selected, deleting, onSel
 };
 
 const Modal = ({ open, onClose, title, children }) => {
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (
-    <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-5">
-      <div className="modal-shell w-full max-w-lg border border-orange-500/25 bg-black sm:max-h-[90vh] sm:overflow-y-auto lg:max-w-2xl">
-        <div className="flex items-center justify-between border-b border-orange-500/15 px-5 py-4">
+    <div className="modal-backdrop fixed inset-0 z-[100] flex items-end justify-center bg-black/95 p-3 backdrop-blur-sm sm:items-center sm:p-5">
+      <div className="modal-shell flex max-h-[calc(100dvh-1rem)] w-full max-w-lg flex-col overflow-hidden rounded-t-[28px] border border-orange-500/30 bg-black sm:max-h-[90vh] sm:rounded-[28px] lg:max-w-2xl">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-orange-500/15 bg-black/95 px-5 py-4 backdrop-blur">
           <div className="font-display text-2xl text-white">{title}</div>
           <button onClick={onClose} className="text-zinc-500 transition-colors hover:text-orange-500">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="overscroll-contain overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">{children}</div>
       </div>
     </div>
   );
