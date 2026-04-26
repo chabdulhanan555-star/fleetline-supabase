@@ -100,7 +100,6 @@ const READING_TYPES = {
 
 const HIGH_DAILY_KM_WARNING = 300;
 const ROUTE_ODOMETER_DIFF_WARNING_PCT = 25;
-const APP_VERSION = '1.0.0';
 const APP_TIME_ZONE = 'Asia/Karachi';
 const MISSING_READING_CUTOFFS = {
   morning: { hour: 11, label: '11:00 AM' },
@@ -2900,96 +2899,6 @@ const AuditPanel = ({ auditRows, auditCount, page, pageSize, onPageChange, onRef
   </div>
 );
 
-const AppHealthPanel = ({
-  appHealth,
-  queuedItems,
-  employees,
-  readings,
-  routeSessions,
-  routePoints,
-  fuelPriceHistory,
-  dailyReviews,
-}) => {
-  const failedQueue = queuedItems.filter((item) => item.status === 'failed').length;
-  const syncingQueue = queuedItems.filter((item) => item.status === 'syncing').length;
-  const pendingQueue = queuedItems.length - failedQueue - syncingQueue;
-  const healthChecks = [
-    {
-      label: 'Backend Connection',
-      value: appHealth.supabaseConfigured ? 'Configured' : 'Missing Env',
-      tone: appHealth.supabaseConfigured ? 'green' : 'red',
-      detail: 'VITE_SUPABASE_URL and anon key',
-    },
-    {
-      label: 'Browser Network',
-      value: appHealth.isOnline ? 'Online' : 'Offline',
-      tone: appHealth.isOnline ? 'green' : 'amber',
-      detail: appHealth.isOnline ? 'Realtime can refresh' : 'Writes will queue',
-    },
-    {
-      label: 'Location Permission',
-      value: appHealth.locationPermission,
-      tone: appHealth.locationPermission === 'granted' ? 'green' : appHealth.locationPermission === 'denied' ? 'red' : 'amber',
-      detail: 'Needed for route proof',
-    },
-    {
-      label: 'Offline Queue',
-      value: queuedItems.length,
-      tone: failedQueue ? 'red' : queuedItems.length ? 'amber' : 'green',
-      detail: `${pendingQueue} queued | ${syncingQueue} syncing | ${failedQueue} failed`,
-    },
-    {
-      label: 'Last Sync',
-      value: appHealth.lastSyncAt ? fmtTime(appHealth.lastSyncAt) : 'Waiting',
-      tone: appHealth.lastSyncAt ? 'green' : 'amber',
-      detail: appHealth.lastSyncAt ? fmtDate(appHealth.lastSyncAt) : 'No realtime refresh yet',
-    },
-    {
-      label: 'App Version',
-      value: appHealth.appVersion,
-      tone: 'zinc',
-      detail: 'Frontend build label',
-    },
-  ];
-
-  return (
-    <div className="dashboard-3d space-y-4 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Diagnostics</div>
-          <div className="font-display text-3xl leading-none text-white">App Health</div>
-          <div className="mt-1 text-xs text-zinc-500">Use this screen when login, GPS, sync, or photos feel confusing.</div>
-        </div>
-        <Shield className="h-7 w-7 text-orange-500" />
-      </div>
-
-      <div className="grid gap-2 md:grid-cols-2">
-        {healthChecks.map((check) => (
-          <div key={check.label} className={`surface-3d border p-4 ${statusClasses[check.tone] ?? statusClasses.zinc}`}>
-            <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">{check.label}</div>
-            <div className="mt-1 font-display text-3xl leading-none text-white">{check.value}</div>
-            <div className="mt-1 text-xs text-zinc-400">{check.detail}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="ledger-panel-3d border border-orange-500/25 p-5">
-        <div className="mb-4 font-display text-2xl text-white">Realtime Data Counters</div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <StatCard label="Riders" value={employees.length} unit="rows" icon={Users} accent="orange" />
-          <StatCard label="Readings" value={readings.length} unit="rows" icon={Camera} accent="gold" />
-          <StatCard label="Routes" value={routeSessions.length} unit="sessions" icon={Route} accent="teal" />
-          <StatCard label="GPS Points" value={routePoints.length} unit="points" icon={MapPin} accent="white" />
-          <StatCard label="Fuel Prices" value={fuelPriceHistory.length} unit="days" icon={Fuel} accent="orange" />
-          <StatCard label="Reviews" value={dailyReviews.length} unit="rows" icon={PackageCheck} accent="gold" />
-          <StatCard label="SW Support" value={appHealth.serviceWorkerSupported ? 'Yes' : 'No'} unit="" icon={RefreshCw} accent={appHealth.serviceWorkerSupported ? 'teal' : 'white'} />
-          <StatCard label="GPS Support" value={appHealth.gpsSupported ? 'Yes' : 'No'} unit="" icon={MapPin} accent={appHealth.gpsSupported ? 'teal' : 'gold'} />
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const EmployeeRouteHistory = ({ employee, routeSessions = [], routePoints = [], selectedMonth, onLoadRoutePoints }) => {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
@@ -3763,9 +3672,6 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [adminTab, setAdminTab] = useState('overview');
   const [riderTab, setRiderTab] = useState('today');
-  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
-  const [locationPermission, setLocationPermission] = useState('unknown');
-  const [lastSyncAt, setLastSyncAt] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [photoModal, setPhotoModal] = useState({ open: false, url: '', path: '' });
   const [resetPinEmployee, setResetPinEmployee] = useState(null);
@@ -3783,7 +3689,6 @@ export default function App() {
   const routeWatchRef = useRef(null);
   const activeRouteRef = useRef(null);
   const lastRoutePointRef = useRef(null);
-  const markSynced = () => setLastSyncAt(new Date().toISOString());
 
   useEffect(() => {
     const timeout = toast ? window.setTimeout(() => setToast(null), 2600) : null;
@@ -3791,48 +3696,6 @@ export default function App() {
       if (timeout) window.clearTimeout(timeout);
     };
   }, [toast]);
-
-  useEffect(() => {
-    const updateOnline = () => setIsOnline(navigator.onLine);
-    window.addEventListener('online', updateOnline);
-    window.addEventListener('offline', updateOnline);
-    return () => {
-      window.removeEventListener('online', updateOnline);
-      window.removeEventListener('offline', updateOnline);
-    };
-  }, []);
-
-  useEffect(() => {
-    let permissionStatus;
-    let cancelled = false;
-
-    const loadLocationPermission = async () => {
-      if (!navigator.geolocation) {
-        setLocationPermission('unsupported');
-        return;
-      }
-
-      if (!navigator.permissions?.query) {
-        setLocationPermission('available');
-        return;
-      }
-
-      try {
-        permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-        if (cancelled) return;
-        setLocationPermission(permissionStatus.state);
-        permissionStatus.onchange = () => setLocationPermission(permissionStatus.state);
-      } catch {
-        if (!cancelled) setLocationPermission('available');
-      }
-    };
-
-    loadLocationPermission();
-    return () => {
-      cancelled = true;
-      if (permissionStatus) permissionStatus.onchange = null;
-    };
-  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -3872,33 +3735,15 @@ export default function App() {
       return undefined;
     }
 
-    const unsubscribeEmployees = subscribeEmployees((rows) => {
-      setEmployees(rows);
-      markSynced();
-    });
-    const unsubscribeReadings = subscribeReadings((rows) => {
-      setReadings(rows);
-      markSynced();
-    });
-    const unsubscribeConfig = subscribeConfig((row) => {
-      setConfig(row);
-      markSynced();
-    });
-    const unsubscribeFuelPriceHistory = subscribeFuelPriceHistory((rows) => {
-      setFuelPriceHistory(rows);
-      markSynced();
-    });
+    const unsubscribeEmployees = subscribeEmployees((rows) => setEmployees(rows));
+    const unsubscribeReadings = subscribeReadings((rows) => setReadings(rows));
+    const unsubscribeConfig = subscribeConfig((row) => setConfig(row));
+    const unsubscribeFuelPriceHistory = subscribeFuelPriceHistory((rows) => setFuelPriceHistory(rows));
     const unsubscribeDailyReviews = session.role === 'admin'
-      ? subscribeDailyReviews((rows) => {
-          setDailyReviews(rows);
-          markSynced();
-        })
+      ? subscribeDailyReviews((rows) => setDailyReviews(rows))
       : null;
     const unsubscribeRouteSessions = session.role === 'admin'
-      ? subscribeRouteSessions((rows) => {
-          setRouteSessions(rows);
-          markSynced();
-        })
+      ? subscribeRouteSessions((rows) => setRouteSessions(rows))
       : null;
     const unsubscribeRoutePoints = session.role === 'admin'
       ? subscribeRoutePoints((rows) => {
@@ -3909,7 +3754,6 @@ export default function App() {
               (left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime(),
             );
           });
-          markSynced();
         })
       : null;
 
@@ -4475,15 +4319,6 @@ export default function App() {
   const failedQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'failed').length;
   const syncingQueuedCount = riderQueuedReadings.filter((reading) => reading.outboxStatus === 'syncing').length;
   const queuedRouteCount = riderQueuedRouteItems.length;
-  const appHealth = {
-    appVersion: APP_VERSION,
-    isOnline,
-    lastSyncAt,
-    locationPermission,
-    supabaseConfigured: isSupabaseConfigured,
-    gpsSupported: typeof navigator !== 'undefined' && Boolean(navigator.geolocation),
-    serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
-  };
 
   const handleAdminLogin = async (email, password) => {
     setAuthLoading(true);
@@ -4811,18 +4646,6 @@ export default function App() {
                 onRefresh={() => refreshAudit(auditPage)}
               />
             ) : null}
-            {adminTab === 'health' ? (
-              <AppHealthPanel
-                appHealth={appHealth}
-                queuedItems={queuedItems}
-                employees={employees}
-                readings={readings}
-                routeSessions={routeSessions}
-                routePoints={routePoints}
-                fuelPriceHistory={fuelPriceHistory}
-                dailyReviews={dailyReviews}
-              />
-            ) : null}
             {adminTab === 'settings' ? <AdminSettings config={config} fuelPriceHistory={fuelPriceHistory} onSave={handleSaveConfig} /> : null}
           </>
         )}
@@ -4836,7 +4659,6 @@ export default function App() {
               { id: 'routes', label: 'Routes', icon: Route },
               { id: 'admins', label: 'Admins', icon: Shield },
               { id: 'audit', label: 'Audit', icon: History },
-              { id: 'health', label: 'Health', icon: RefreshCw },
               { id: 'settings', label: 'Settings', icon: Settings },
             ].map((tab) => (
               <button
