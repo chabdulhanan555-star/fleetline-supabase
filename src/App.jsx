@@ -437,14 +437,6 @@ const getRouteHealth = ({ routeSession, routePoints = [], odometerKm = 0 }) => {
 const getProblemFlags = ({ daySummary, routeHealth, review, now = new Date(), date = today() }) => {
   const flags = [];
 
-  if (!daySummary.morning && isPastCutoff('morning', now)) {
-    flags.push({ id: 'missing_morning', label: 'Missing Morning', tone: 'red' });
-  }
-
-  if (daySummary.morning && !daySummary.evening && isPastCutoff('evening', now)) {
-    flags.push({ id: 'missing_evening', label: 'Missing Evening', tone: 'red' });
-  }
-
   if (daySummary.invalid) {
     flags.push({ id: 'invalid_odo', label: 'Evening < Morning', tone: 'red' });
   }
