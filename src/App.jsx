@@ -2045,7 +2045,7 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
   );
 };
 
-const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
+const EmployeeForm = ({ employee, onSave, onDelete, onCancel, onShowToast }) => {
   const [form, setForm] = useState(
     employee || {
       name: '',
@@ -2064,12 +2064,12 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
 
   const handleSave = () => {
     if (!form.name || !form.username || !form.bikePlate) {
-      window.alert('Name, username, and bike plate are required.');
+      onShowToast?.('Name, username, and bike plate are required.', 'error');
       return;
     }
 
     if (isNew && !/^\d{4}$/.test(String(form.pin ?? ''))) {
-      window.alert('A 4-digit PIN is required for new riders.');
+      onShowToast?.('A 4-digit PIN is required for new riders.', 'error');
       return;
     }
 
@@ -3154,7 +3154,7 @@ const AdminRoutesPanel = ({ employees, routeSessions, routePoints, deletingRoute
   );
 };
 
-const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
+const AdminEmployees = ({ employees, onSave, onDelete, onResetPin, onShowToast }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -3276,6 +3276,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'EDIT RIDER' : 'NEW RIDER'} fullScreen>
         <EmployeeForm
           employee={editing}
+          onShowToast={onShowToast}
           onSave={async (employee, options) => {
             try {
               await onSave(employee, options);
@@ -3613,6 +3614,7 @@ const EmployeeDetailView = ({
   onDeleteEmployee,
   onDeleteReading,
   onResetPin,
+  onShowToast,
   onPreviewPhoto,
 }) => {
   const [showEdit, setShowEdit] = useState(false);
@@ -3789,6 +3791,7 @@ const EmployeeDetailView = ({
       <Modal open={showEdit} onClose={() => setShowEdit(false)} title="EDIT RIDER" fullScreen>
         <EmployeeForm
           employee={employee}
+          onShowToast={onShowToast}
           onSave={async (nextEmployee, options) => {
             try {
               await onUpdateEmployee(nextEmployee, options);
@@ -3825,6 +3828,7 @@ const RiderSubmitView = ({
   onRetrySync,
   onSubmit,
   onShareWhatsApp,
+  onShowToast,
 }) => {
   const fileInput = useRef(null);
   const [photoFile, setPhotoFile] = useState(null);
@@ -4130,17 +4134,17 @@ const RiderSubmitView = ({
         onClick={async () => {
           const km = Number.parseInt(reading, 10);
           if (!photoFile || Number.isNaN(km) || km < 0) {
-            window.alert('Please attach a photo and enter a valid odometer reading.');
+            onShowToast?.('Please attach a photo and enter a valid odometer reading.', 'error');
             return;
           }
 
           if (selectedTypeReading) {
-            window.alert(`${selectedTypeConfig.label} is already submitted for today.`);
+            onShowToast?.(`${selectedTypeConfig.label} is already submitted for today.`, 'error');
             return;
           }
 
           if (readingType === 'evening' && !todaySummary.morning) {
-            window.alert('Please submit Morning Start before Evening End.');
+            onShowToast?.('Please submit Morning Start before Evening End.', 'error');
             return;
           }
 
@@ -5215,6 +5219,7 @@ export default function App() {
             onDeleteReading={handleDeleteReading}
             onResetPin={setResetPinEmployee}
             onPreviewPhoto={handlePreviewPhoto}
+            onShowToast={showToast}
           />
         ) : (
           <>
@@ -5250,6 +5255,7 @@ export default function App() {
                 onSave={handleSaveEmployee}
                 onDelete={handleDeleteEmployee}
                 onResetPin={setResetPinEmployee}
+                onShowToast={showToast}
               />
             ) : null}
             {adminTab === 'routes' ? (
@@ -5347,6 +5353,7 @@ export default function App() {
           onRetrySync={() => flushQueuedItems(true)}
           onSubmit={handleSubmitReading}
           onShareWhatsApp={(message) => openWhatsApp(config.adminWhatsApp, message)}
+          onShowToast={showToast}
         />
       ) : null}
       {riderTab === 'history' ? (
