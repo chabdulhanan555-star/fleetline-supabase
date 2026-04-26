@@ -1855,31 +1855,6 @@ const DailyCloseSheet = ({ rows, config, onSelectEmployee, onPreviewPhoto, onSav
                   <StatusBadge label="No Problem Flags" tone="green" />
                 )}
               </div>
-
-              <div className="mt-4 grid gap-2 md:grid-cols-[180px_1fr_120px]">
-                <select
-                  value={draft.status}
-                  onChange={(event) => updateDraft(row, { status: event.target.value })}
-                  className="field-focus mini-surface-3d border border-zinc-800 bg-black px-3 py-2 font-mono text-xs uppercase text-zinc-200"
-                >
-                  {Object.entries(REVIEW_STATUS).map(([value, meta]) => (
-                    <option key={value} value={value}>{meta.label}</option>
-                  ))}
-                </select>
-                <textarea
-                  value={draft.notes}
-                  onChange={(event) => updateDraft(row, { notes: event.target.value })}
-                  placeholder="Admin notes, e.g. photo unclear, route checked, approved for payment..."
-                  className="field-focus mini-surface-3d min-h-[42px] resize-y border border-zinc-800 bg-black px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
-                />
-                <button
-                  onClick={() => handleSave(row)}
-                  disabled={savingKey === key}
-                  className="button-3d button-3d-outline px-3 py-2 font-display tracking-widest disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {savingKey === key ? 'SAVING' : 'SAVE'}
-                </button>
-              </div>
             </div>
           );
         })}
@@ -1919,11 +1894,7 @@ const AdminOverview = ({
   });
   const activeRouteCount = routeSessions.filter((session) => session.date === alertDate && session.status === 'active').length;
   const inMarketCount = dailyCloseRows.filter((row) => row.daySummary.morning && !row.daySummary.evening).length;
-  const needsReviewCount = dailyCloseRows.filter(
-    (row) =>
-      row.flags.length > 0 ||
-      (row.daySummary.complete && row.review?.status !== 'approved'),
-  ).length;
+  const needsReviewCount = dailyCloseRows.filter((row) => row.flags.length > 0).length;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 60000);
@@ -2313,8 +2284,8 @@ const AdminCloseSheetPanel = ({
     date: closeDate,
     now,
   });
-  const approvedCount = closeRows.filter((row) => row.review?.status === 'approved').length;
-  const problemCount = closeRows.filter((row) => row.flags.length > 0 || row.review?.status === 'problem').length;
+  const completeCount = closeRows.filter((row) => row.daySummary.complete).length;
+  const problemCount = closeRows.filter((row) => row.flags.length > 0).length;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 60000);
@@ -2336,7 +2307,7 @@ const AdminCloseSheetPanel = ({
 
       <div className="grid grid-cols-3 gap-2">
         <StatCard label="Riders" value={closeRows.length} unit="today" icon={Users} accent="orange" />
-        <StatCard label="Approved" value={approvedCount} unit="days" icon={CheckCircle} accent="teal" />
+        <StatCard label="Complete" value={completeCount} unit="days" icon={CheckCircle} accent="teal" />
         <StatCard label="Problems" value={problemCount} unit="flags" icon={Shield} accent={problemCount ? 'gold' : 'white'} />
       </div>
 
