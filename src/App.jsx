@@ -2860,17 +2860,20 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
 
   return (
     <div className="dashboard-3d p-5">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Fleet Roster</div>
-          <div className="font-display text-3xl leading-none text-white">{employees.length} Riders</div>
+          <div className="font-display text-3xl leading-none text-white">
+            <AnimatedCounter value={employees.length} /> Riders
+          </div>
+          <div className="mt-1 text-xs text-zinc-500">Add, edit, or reset PINs for the riders you manage.</div>
         </div>
         <button
           onClick={() => {
             setEditing(null);
             setShowModal(true);
           }}
-          className="button-3d button-3d-primary glow-orange flex items-center gap-1.5 px-4 py-2.5 font-display tracking-widest"
+          className="button-3d button-3d-primary glow-orange flex shrink-0 items-center gap-1.5 px-4 py-2.5 font-display tracking-widest"
         >
           <UserPlus className="h-4 w-4" /> ADD
         </button>
@@ -2892,55 +2895,81 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
           </button>
         </div>
       ) : (
-        <div className="space-y-2">
-          {employees.map((employee, employeeIndex) => (
-            <div
-              key={employee.id}
-              className="surface-3d lift-3d fade-up border border-zinc-800 bg-zinc-950 p-4"
-              style={{ animationDelay: `${Math.min(employeeIndex, 10) * 60}ms` }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center border border-orange-500/40 bg-gradient-to-br from-orange-500/20 to-amber-500/20">
-                  <User className="h-6 w-6 text-orange-500" />
+        <div className="space-y-3">
+          {employees.map((employee, employeeIndex) => {
+            const initial = (employee.name || '?').trim().charAt(0).toUpperCase() || '?';
+            return (
+              <div
+                key={employee.id}
+                className="ops-ledger-row fade-up grid gap-3 border border-white/5 p-4"
+                style={{ animationDelay: `${Math.min(employeeIndex, 10) * 60}ms` }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="ledger-rider-avatar flex h-14 w-14 shrink-0 items-center justify-center border border-orange-500/35 bg-gradient-to-br from-orange-500/25 via-amber-500/10 to-transparent">
+                    <span className="font-display text-3xl leading-none text-orange-300">{initial}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-display text-2xl leading-none text-white">{employee.name}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] uppercase tracking-widest text-blue-200/60">
+                      <span>@{employee.username}</span>
+                      {employee.bikeModel ? (
+                        <>
+                          <span className="text-zinc-700">·</span>
+                          <span className="text-zinc-400">{employee.bikeModel}</span>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setEditing(employee);
+                        setShowModal(true);
+                      }}
+                      className="mini-surface-3d flex h-10 w-10 items-center justify-center border border-zinc-800 bg-zinc-900 transition-colors hover:border-orange-500 hover:bg-orange-500/10"
+                      aria-label="Edit rider"
+                    >
+                      <Edit2 className="h-4 w-4 text-orange-500" />
+                    </button>
+                    <button
+                      onClick={() => onResetPin(employee)}
+                      className="mini-surface-3d flex h-10 w-10 items-center justify-center border border-zinc-800 bg-zinc-900 transition-colors hover:border-amber-500 hover:bg-amber-500/10"
+                      aria-label="Reset PIN"
+                    >
+                      <KeyRound className="h-4 w-4 text-amber-400" />
+                    </button>
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-white">{employee.name}</div>
-                  <div className="font-mono text-[10px] uppercase text-zinc-500">@{employee.username}</div>
-                  <div className="mt-2 grid grid-cols-2 gap-1 font-mono text-[10px] text-zinc-400">
-                    <div className="flex items-center gap-1">
-                      <Phone className="h-3 w-3 text-amber-500" /> {employee.phone || '-'}
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="ops-metric-pill border border-orange-500/15 px-3 py-2">
+                    <div className="flex items-center gap-1 font-mono text-[8px] uppercase tracking-widest text-zinc-500">
+                      <Bike className="h-3 w-3 text-amber-500" /> Plate
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Bike className="h-3 w-3 text-amber-500" /> {employee.bikePlate}
+                    <div className="mt-1 truncate font-display text-base leading-none text-amber-300">
+                      {employee.bikePlate || '—'}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Gauge className="h-3 w-3 text-amber-500" /> {employee.bikeModel || '-'}
+                  </div>
+                  <div className="ops-metric-pill border border-blue-300/15 px-3 py-2">
+                    <div className="flex items-center gap-1 font-mono text-[8px] uppercase tracking-widest text-zinc-500">
+                      <Phone className="h-3 w-3 text-blue-300" /> Phone
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Fuel className="h-3 w-3 text-amber-500" /> {employee.mileage ?? 'default'} km/L
+                    <div className="mt-1 truncate font-display text-base leading-none text-zinc-100">
+                      {employee.phone || '—'}
+                    </div>
+                  </div>
+                  <div className="ops-metric-pill border border-green-400/15 px-3 py-2">
+                    <div className="flex items-center gap-1 font-mono text-[8px] uppercase tracking-widest text-zinc-500">
+                      <Fuel className="h-3 w-3 text-green-300" /> km/L
+                    </div>
+                    <div className="mt-1 font-display text-base leading-none text-green-300">
+                      {employee.mileage ?? 'default'}
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => {
-                      setEditing(employee);
-                      setShowModal(true);
-                    }}
-                    className="mini-surface-3d flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-orange-500 hover:bg-orange-500/10"
-                  >
-                    <Edit2 className="h-4 w-4 text-orange-500" />
-                  </button>
-                  <button
-                    onClick={() => onResetPin(employee)}
-                    className="mini-surface-3d flex h-9 w-9 items-center justify-center border border-zinc-800 bg-zinc-900 hover:border-amber-500 hover:bg-amber-500/10"
-                  >
-                    <KeyRound className="h-4 w-4 text-amber-400" />
-                  </button>
-                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
