@@ -187,6 +187,9 @@ const fmtDistance = (meters) => {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${Math.round(value)} m`;
 };
 
+const makeClientId = () =>
+  globalThis.crypto?.randomUUID?.() ?? `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
 const toRadians = (value) => (Number(value) * Math.PI) / 180;
 
 const distanceMeters = (left, right) => {
@@ -202,8 +205,8 @@ const distanceMeters = (left, right) => {
   return 2 * earthRadiusM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const sortRoutePoints = (points) =>
-  [...points].sort((left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime());
+const sortRoutePoints = (points = []) =>
+  [...(points ?? [])].sort((left, right) => new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime());
 
 const calculateRouteDistanceM = (points) =>
   sortRoutePoints(points).reduce((total, point, index, rows) => {
@@ -230,15 +233,19 @@ const readStoredActiveRoute = () => {
 
 const writeStoredActiveRoute = (route) => {
   if (typeof window === 'undefined') return;
-  if (!route) {
-    window.localStorage.removeItem(ROUTE_TRACKING_KEY);
-    return;
+  try {
+    if (!route) {
+      window.localStorage.removeItem(ROUTE_TRACKING_KEY);
+      return;
+    }
+    window.localStorage.setItem(ROUTE_TRACKING_KEY, JSON.stringify(route));
+  } catch (error) {
+    console.warn('[route-tracking] Could not persist active route locally', error);
   }
-  window.localStorage.setItem(ROUTE_TRACKING_KEY, JSON.stringify(route));
 };
 
 const pointFromPosition = (position, session) => ({
-  id: crypto.randomUUID(),
+  id: makeClientId(),
   sessionId: session.id,
   employeeId: session.employeeId,
   recordedAt: new Date(position.timestamp || Date.now()).toISOString(),
@@ -1438,6 +1445,8 @@ const thinRoutePoints = (points, maxPoints) => {
   return thinned;
 };
 
+const routePointKey = (point) => point?.id ?? `${point?.lat}:${point?.lng}:${point?.recordedAt}`;
+
 const buildRouteLineData = (points) => {
   const linePoints = thinRoutePoints(points, ROUTE_RENDER_LINE_LIMIT);
 
@@ -1460,15 +1469,15 @@ const buildRouteLineData = (points) => {
 
 const buildRoutePointData = (points) => {
   const markerPoints = thinRoutePoints(points, ROUTE_RENDER_MARKER_LIMIT);
-  const firstPoint = points[0];
-  const lastPoint = points.at(-1);
+  const firstKey = routePointKey(points[0]);
+  const lastKey = routePointKey(points.at(-1));
 
   return {
     type: 'FeatureCollection',
     features: markerPoints.map((point) => ({
       type: 'Feature',
       properties: {
-        kind: point.id === firstPoint?.id ? 'start' : point.id === lastPoint?.id ? 'live' : 'point',
+        kind: routePointKey(point) === firstKey ? 'start' : routePointKey(point) === lastKey ? 'live' : 'point',
       },
       geometry: {
         type: 'Point',
@@ -4310,7 +4319,8 @@ export default function App() {
 
     routeWatchRef.current = navigator.geolocation.watchPosition(
       (position) => {
-        const nextPoint = pointFromPosition(position, route);
+        const activeRoute = activeRouteRef.current ?? route;
+        const nextPoint = pointFromPosition(position, activeRoute);
         if (!shouldRecordRoutePoint(lastRoutePointRef.current, nextPoint)) return;
         recordRoutePoint(nextPoint);
       },
@@ -4374,7 +4384,7 @@ export default function App() {
     try {
       const firstPosition = await getCurrentPosition();
       const route = {
-        id: crypto.randomUUID(),
+        id: makeClientId(),
         employeeId: employee.id,
         date,
         startReadingId: readingId,
@@ -4797,7 +4807,7 @@ export default function App() {
   };
 
   const handleSubmitReading = async ({ employee, km, date, readingType, photoFile }) => {
-    const readingId = crypto.randomUUID();
+    const readingId = makeClientId();
     const compressedPhoto = await compressPhoto(photoFile);
     const payload = {
       readingId,

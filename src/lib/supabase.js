@@ -338,14 +338,18 @@ function readStoredRiderSession() {
 function writeStoredRiderSession(nextSession) {
   riderSession = nextSession;
 
-  if (!nextSession) {
-    riderClient = null;
-    window.localStorage.removeItem(RIDER_SESSION_KEY);
-    return;
-  }
+  try {
+    if (!nextSession) {
+      riderClient = null;
+      window.localStorage.removeItem(RIDER_SESSION_KEY);
+      return;
+    }
 
-  riderClient = buildRiderClient(nextSession.accessToken);
-  window.localStorage.setItem(RIDER_SESSION_KEY, JSON.stringify(nextSession));
+    riderClient = buildRiderClient(nextSession.accessToken);
+    window.localStorage.setItem(RIDER_SESSION_KEY, JSON.stringify(nextSession));
+  } catch (error) {
+    console.warn('[fleetline] Could not persist rider session locally', error);
+  }
 }
 
 function buildRiderClient(accessToken) {
