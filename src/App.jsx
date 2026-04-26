@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   BarChart3,
@@ -1014,6 +1015,21 @@ const ThemeStyles = () => (
       animation: modal-rise-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
       box-shadow: 0 30px 90px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,253,247,0.10);
     }
+    .modal-scroll-area {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(217,119,6,0.72) rgba(5,8,12,0.88);
+    }
+    .modal-scroll-area::-webkit-scrollbar {
+      width: 8px;
+    }
+    .modal-scroll-area::-webkit-scrollbar-track {
+      background: rgba(5,8,12,0.88);
+    }
+    .modal-scroll-area::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #d97706, #92400e);
+      border-radius: 999px;
+      border: 2px solid rgba(5,8,12,0.88);
+    }
     .photo-preview-zoom {
       animation: photo-zoom-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
       box-shadow: 0 26px 80px rgba(0,0,0,0.5), 0 0 30px rgba(217,119,6,0.16);
@@ -1709,31 +1725,51 @@ const RouteSessionCard = ({ session, employee, points, selected, deleting, onSel
 };
 
 const Modal = ({ open, onClose, title, children }) => {
+  const scrollRef = useRef(null);
+
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
 
     const previousOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
     };
   }, [open]);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return undefined;
 
-  return (
+    const frame = window.requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, title]);
+
+  if (!open || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div className="modal-backdrop fixed inset-0 z-[100] flex items-end justify-center bg-black/95 p-3 backdrop-blur-sm sm:items-center sm:p-5">
-      <div className="modal-shell flex max-h-[calc(100dvh-1rem)] w-full max-w-lg flex-col overflow-hidden rounded-t-[28px] border border-orange-500/30 bg-black sm:max-h-[90vh] sm:rounded-[28px] lg:max-w-2xl">
+      <div className="modal-shell flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-orange-500/30 bg-black sm:max-h-[90vh] lg:max-w-2xl">
         <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-orange-500/15 bg-black/95 px-5 py-4 backdrop-blur">
           <div className="font-display text-2xl text-white">{title}</div>
           <button onClick={onClose} className="text-zinc-500 transition-colors hover:text-orange-500">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="overscroll-contain overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">{children}</div>
+        <div ref={scrollRef} className="modal-scroll-area overscroll-contain overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
@@ -2069,26 +2105,28 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
         </label>
       ) : null}
 
-      <div className="mt-6 flex gap-2">
-        <button onClick={onCancel} className="mini-surface-3d flex-1 border border-zinc-800 bg-zinc-900 py-3 font-display tracking-widest text-zinc-400">
-          CANCEL
-        </button>
-        <button onClick={handleSave} className="glow-orange flex-1 bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black">
-          SAVE
-        </button>
+      <div className="sticky bottom-0 z-10 -mx-5 mt-6 border-t border-orange-500/15 bg-black/95 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_40px_rgba(0,0,0,0.72)] backdrop-blur">
+        <div className="flex gap-2">
+          <button onClick={onCancel} className="mini-surface-3d flex-1 border border-zinc-800 bg-zinc-900 py-3 font-display tracking-widest text-zinc-400">
+            CANCEL
+          </button>
+          <button onClick={handleSave} className="glow-orange flex-1 bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black">
+            SAVE
+          </button>
+        </div>
+        {employee && onDelete ? (
+          <button
+            onClick={() => {
+              if (window.confirm(`Delete ${employee.name}? All readings and photos will be removed.`)) {
+                onDelete(employee.id);
+              }
+            }}
+            className="mini-surface-3d mt-3 flex w-full items-center justify-center gap-2 border border-red-500/40 py-2.5 font-display tracking-widest text-red-400 hover:bg-red-500/10"
+          >
+            <Trash2 className="h-4 w-4" /> DELETE RIDER
+          </button>
+        ) : null}
       </div>
-      {employee && onDelete ? (
-        <button
-          onClick={() => {
-            if (window.confirm(`Delete ${employee.name}? All readings and photos will be removed.`)) {
-              onDelete(employee.id);
-            }
-          }}
-          className="mini-surface-3d mt-3 flex w-full items-center justify-center gap-2 border border-red-500/40 py-2.5 font-display tracking-widest text-red-400 hover:bg-red-500/10"
-        >
-          <Trash2 className="h-4 w-4" /> DELETE RIDER
-        </button>
-      ) : null}
     </div>
   );
 };
