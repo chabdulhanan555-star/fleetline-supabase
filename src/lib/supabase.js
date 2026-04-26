@@ -780,7 +780,8 @@ export function subscribeRoutePoints(callback) {
     return demoSubscribe('routePoints', callback);
   }
 
-  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+  // Keep the live GPS buffer small; older route sessions are loaded on demand.
+  const since = new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString();
 
   return subscribeTable({
     table: 'route_points',

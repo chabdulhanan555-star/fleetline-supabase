@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
-import maplibregl from 'maplibre-gl';
 import {
   ArrowLeft,
   BarChart3,
@@ -116,6 +115,10 @@ const ROUTE_TRACKING_KEY = 'fleetline.active-route-session.v1';
 const ROUTE_SAMPLE_INTERVAL_MS = 60000;
 const ROUTE_MIN_DISTANCE_M = 75;
 const ROUTE_STALE_AFTER_MS = 30 * 60 * 1000;
+const ROUTE_RENDER_LINE_LIMIT = 450;
+const ROUTE_RENDER_MARKER_LIMIT = 110;
+const ROUTE_REFIT_POINT_DELTA = 18;
+const ROUTE_MAP_FALLBACK_CENTER = [74.3587, 31.5204];
 const ROUTE_MAP_STYLE = {
   version: 8,
   sources: {
@@ -139,6 +142,16 @@ const ROUTE_MAP_STYLE = {
       },
     },
   ],
+};
+
+let maplibrePromise = null;
+
+const loadMaplibre = () => {
+  if (!maplibrePromise) {
+    maplibrePromise = import('maplibre-gl').then((module) => module.default ?? module);
+  }
+
+  return maplibrePromise;
 };
 
 const getAppDateTime = (date = new Date()) => {
@@ -930,7 +943,7 @@ const ThemeStyles = () => (
         inset 0 1px 0 rgba(255,253,247,0.1);
     }
     .route-map-3d .maplibregl-canvas {
-      filter: saturate(0.9) contrast(1.05);
+      filter: none;
     }
     .route-map-3d .maplibregl-ctrl-attrib {
       background: rgba(5, 8, 12, 0.78);
@@ -1399,37 +1412,73 @@ const BarChart = ({ rows, valueLabel = (value) => fmtNum(Math.round(value)), emp
   );
 };
 
-const buildRouteLineData = (points) => ({
-  type: 'FeatureCollection',
-  features: points.length > 1
-    ? [
-        {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: points.map((point) => [point.lng, point.lat]),
+const thinRoutePoints = (points, maxPoints) => {
+  if (!Array.isArray(points) || points.length <= maxPoints) return points || [];
+  if (maxPoints <= 2) return [points[0], points.at(-1)].filter(Boolean);
+
+  const step = (points.length - 1) / (maxPoints - 1);
+  const thinned = [];
+  const seen = new Set();
+
+  for (let index = 0; index < maxPoints; index += 1) {
+    const point = points[Math.round(index * step)];
+    const key = point?.id ?? `${point?.lat}:${point?.lng}:${point?.recordedAt}`;
+    if (point && !seen.has(key)) {
+      seen.add(key);
+      thinned.push(point);
+    }
+  }
+
+  const lastPoint = points.at(-1);
+  const lastKey = lastPoint?.id ?? `${lastPoint?.lat}:${lastPoint?.lng}:${lastPoint?.recordedAt}`;
+  if (lastPoint && !seen.has(lastKey)) {
+    thinned.push(lastPoint);
+  }
+
+  return thinned;
+};
+
+const buildRouteLineData = (points) => {
+  const linePoints = thinRoutePoints(points, ROUTE_RENDER_LINE_LIMIT);
+
+  return {
+    type: 'FeatureCollection',
+    features: linePoints.length > 1
+      ? [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: linePoints.map((point) => [point.lng, point.lat]),
+            },
           },
-        },
-      ]
-    : [],
-});
+        ]
+      : [],
+  };
+};
 
-const buildRoutePointData = (points) => ({
-  type: 'FeatureCollection',
-  features: points.map((point, index) => ({
-    type: 'Feature',
-    properties: {
-      kind: index === 0 ? 'start' : index === points.length - 1 ? 'live' : 'point',
-    },
-    geometry: {
-      type: 'Point',
-      coordinates: [point.lng, point.lat],
-    },
-  })),
-});
+const buildRoutePointData = (points) => {
+  const markerPoints = thinRoutePoints(points, ROUTE_RENDER_MARKER_LIMIT);
+  const firstPoint = points[0];
+  const lastPoint = points.at(-1);
 
-const updateRouteMapData = (map, points) => {
+  return {
+    type: 'FeatureCollection',
+    features: markerPoints.map((point) => ({
+      type: 'Feature',
+      properties: {
+        kind: point.id === firstPoint?.id ? 'start' : point.id === lastPoint?.id ? 'live' : 'point',
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [point.lng, point.lat],
+      },
+    })),
+  };
+};
+
+const updateRouteMapData = (map, points, maplibre, options = {}) => {
   const lineSource = map.getSource('route-line');
   const pointSource = map.getSource('route-points');
   if (!lineSource || !pointSource) return;
@@ -1437,21 +1486,35 @@ const updateRouteMapData = (map, points) => {
   lineSource.setData(buildRouteLineData(points));
   pointSource.setData(buildRoutePointData(points));
 
+  const { fit = false, follow = false } = options;
+  const lastPoint = points.at(-1);
+
+  if (!lastPoint || (!fit && !follow)) return;
+
   if (points.length === 1) {
-    map.easeTo({ center: [points[0].lng, points[0].lat], zoom: 15, pitch: 60, bearing: -22, duration: 600 });
+    map.easeTo({ center: [lastPoint.lng, lastPoint.lat], zoom: 15, pitch: 52, bearing: -18, duration: 350 });
     return;
   }
 
-  if (points.length > 1) {
-    const bounds = new maplibregl.LngLatBounds();
-    points.forEach((point) => bounds.extend([point.lng, point.lat]));
-    map.fitBounds(bounds, { padding: 44, maxZoom: 16, duration: 700 });
+  if (fit && maplibre) {
+    const bounds = new maplibre.LngLatBounds();
+    thinRoutePoints(points, ROUTE_RENDER_LINE_LIMIT).forEach((point) => bounds.extend([point.lng, point.lat]));
+    map.fitBounds(bounds, { padding: 44, maxZoom: 16, duration: 420 });
+    return;
+  }
+
+  if (follow) {
+    map.easeTo({ center: [lastPoint.lng, lastPoint.lat], duration: 260, essential: false });
   }
 };
 
 const RouteMap = ({ points, session, employee }) => {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
+  const maplibreRef = useRef(null);
+  const updateFrameRef = useRef(null);
+  const fittedRouteRef = useRef({ sessionId: null, pointCount: 0 });
+  const [mapStatus, setMapStatus] = useState('loading');
   const routePoints = useMemo(() => sortRoutePoints(points), [points]);
   const routeDistance = session?.totalDistanceM || calculateRouteDistanceM(routePoints);
   const lastPoint = routePoints.at(-1);
@@ -1459,79 +1522,155 @@ const RouteMap = ({ points, session, employee }) => {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return undefined;
 
-    const initialPoint = routePoints[0];
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: ROUTE_MAP_STYLE,
-      center: initialPoint ? [initialPoint.lng, initialPoint.lat] : [74.3587, 31.5204],
-      zoom: initialPoint ? 15 : 10,
-      pitch: 60,
-      bearing: -22,
-      attributionControl: false,
-    });
+    let cancelled = false;
 
-    mapRef.current = map;
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    const initMap = async () => {
+      try {
+        const maplibre = await loadMaplibre();
+        if (cancelled || !containerRef.current) return;
 
-    map.on('load', () => {
-      map.addSource('route-line', {
-        type: 'geojson',
-        data: buildRouteLineData([]),
-      });
-      map.addSource('route-points', {
-        type: 'geojson',
-        data: buildRoutePointData([]),
-      });
-      map.addLayer({
-        id: 'route-line-glow',
-        type: 'line',
-        source: 'route-line',
-        paint: {
-          'line-color': '#f59e0b',
-          'line-width': 11,
-          'line-opacity': 0.24,
-          'line-blur': 5,
-        },
-      });
-      map.addLayer({
-        id: 'route-line-main',
-        type: 'line',
-        source: 'route-line',
-        paint: {
-          'line-color': '#d97706',
-          'line-width': 5,
-          'line-opacity': 0.95,
-        },
-      });
-      map.addLayer({
-        id: 'route-points',
-        type: 'circle',
-        source: 'route-points',
-        paint: {
-          'circle-radius': ['case', ['==', ['get', 'kind'], 'live'], 8, ['==', ['get', 'kind'], 'start'], 7, 4],
-          'circle-color': ['case', ['==', ['get', 'kind'], 'start'], '#22c55e', ['==', ['get', 'kind'], 'live'], '#ef4444', '#f59e0b'],
-          'circle-stroke-color': '#fffdf7',
-          'circle-stroke-width': 2,
-        },
-      });
-      updateRouteMapData(map, routePoints);
-    });
+        maplibreRef.current = maplibre;
+        const initialPoint = routePoints[0];
+        const map = new maplibre.Map({
+          container: containerRef.current,
+          style: ROUTE_MAP_STYLE,
+          center: initialPoint ? [initialPoint.lng, initialPoint.lat] : ROUTE_MAP_FALLBACK_CENTER,
+          zoom: initialPoint ? 15 : 10,
+          pitch: 52,
+          bearing: -18,
+          attributionControl: false,
+          fadeDuration: 0,
+          refreshExpiredTiles: false,
+          renderWorldCopies: false,
+          dragRotate: false,
+          pitchWithRotate: false,
+          canvasContextAttributes: {
+            antialias: false,
+            powerPreference: 'low-power',
+          },
+        });
+
+        mapRef.current = map;
+        map.addControl(new maplibre.AttributionControl({ compact: true }), 'bottom-right');
+
+        map.on('load', () => {
+          if (cancelled) return;
+
+          map.addSource('route-line', {
+            type: 'geojson',
+            data: buildRouteLineData([]),
+          });
+          map.addSource('route-points', {
+            type: 'geojson',
+            data: buildRoutePointData([]),
+          });
+          map.addLayer({
+            id: 'route-line-glow',
+            type: 'line',
+            source: 'route-line',
+            paint: {
+              'line-color': '#f59e0b',
+              'line-width': 9,
+              'line-opacity': 0.2,
+              'line-blur': 4,
+            },
+          });
+          map.addLayer({
+            id: 'route-line-main',
+            type: 'line',
+            source: 'route-line',
+            paint: {
+              'line-color': '#d97706',
+              'line-width': 4,
+              'line-opacity': 0.95,
+            },
+          });
+          map.addLayer({
+            id: 'route-points',
+            type: 'circle',
+            source: 'route-points',
+            paint: {
+              'circle-radius': ['case', ['==', ['get', 'kind'], 'live'], 7, ['==', ['get', 'kind'], 'start'], 6, 3],
+              'circle-color': ['case', ['==', ['get', 'kind'], 'start'], '#22c55e', ['==', ['get', 'kind'], 'live'], '#ef4444', '#f59e0b'],
+              'circle-stroke-color': '#fffdf7',
+              'circle-stroke-width': 1.5,
+            },
+          });
+          updateRouteMapData(map, routePoints, maplibre, { fit: true });
+          fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: routePoints.length };
+          setMapStatus('ready');
+        });
+
+        map.on('error', (event) => {
+          console.warn('[route-map] map error', event?.error || event);
+        });
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) setMapStatus('error');
+      }
+    };
+
+    initMap();
 
     return () => {
-      map.remove();
+      cancelled = true;
+      if (updateFrameRef.current) {
+        window.cancelAnimationFrame(updateFrameRef.current);
+      }
+      mapRef.current?.remove();
       mapRef.current = null;
+      maplibreRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !map.getSource('route-line')) return;
-    updateRouteMapData(map, routePoints);
-  }, [routePoints]);
+    const maplibre = maplibreRef.current;
+    if (!map || !maplibre || !map.isStyleLoaded() || !map.getSource('route-line')) return undefined;
+
+    if (updateFrameRef.current) {
+      window.cancelAnimationFrame(updateFrameRef.current);
+    }
+
+    updateFrameRef.current = window.requestAnimationFrame(() => {
+      const previous = fittedRouteRef.current;
+      const sameSession = previous.sessionId === (session?.id ?? null);
+      const pointDelta = Math.abs(routePoints.length - previous.pointCount);
+      const shouldFit = !sameSession || previous.pointCount === 0 || pointDelta >= ROUTE_REFIT_POINT_DELTA;
+      const shouldFollow = sameSession && session?.status === 'active' && pointDelta > 0;
+
+      updateRouteMapData(map, routePoints, maplibre, { fit: shouldFit, follow: shouldFollow });
+      fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: routePoints.length };
+    });
+
+    return () => {
+      if (updateFrameRef.current) {
+        window.cancelAnimationFrame(updateFrameRef.current);
+      }
+    };
+  }, [routePoints, session?.id, session?.status]);
 
   return (
     <div className="route-map-3d surface-3d relative overflow-hidden border border-orange-500/30 bg-zinc-950">
       <div ref={containerRef} className="h-[360px] w-full" />
+      {mapStatus === 'loading' ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/65 p-8 text-center backdrop-blur-sm">
+          <div>
+            <div className="ghost-pulse mx-auto mb-4 h-16 w-16 border border-orange-500/30 bg-orange-500/10" />
+            <div className="font-display text-2xl text-white">Preparing Route Map</div>
+            <div className="mt-1 text-sm text-zinc-500">Loading the 3D map only when you need it.</div>
+          </div>
+        </div>
+      ) : null}
+      {mapStatus === 'error' ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/75 p-8 text-center">
+          <div>
+            <MapPin className="mx-auto mb-3 h-10 w-10 text-orange-500" />
+            <div className="font-display text-2xl text-white">Map Could Not Load</div>
+            <div className="mt-1 text-sm text-zinc-500">Route data is safe. Check internet speed and reopen this route.</div>
+          </div>
+        </div>
+      ) : null}
       {routePoints.length === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-8 text-center">
           <div>
