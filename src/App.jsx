@@ -2166,9 +2166,15 @@ const AdminOverview = ({
               Full month view for rider payments, fuel overhead, incomplete days, and cost control.
             </div>
           </div>
-          <div className="mini-surface-3d flex h-12 w-12 items-center justify-center border border-orange-500/30 bg-black/60">
+          <button
+            type="button"
+            onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth, fuelPriceHistory), `fleet_${thisMonth}.csv`)}
+            disabled={employees.length === 0}
+            title="Export monthly CSV"
+            className="button-3d button-3d-outline flex h-12 w-12 items-center justify-center border border-orange-500/30 bg-black/60 disabled:cursor-not-allowed disabled:opacity-40"
+          >
             <FileDown className="h-5 w-5 text-orange-500" />
-          </div>
+          </button>
         </div>
 
         <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -2202,16 +2208,8 @@ const AdminOverview = ({
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-y border-orange-500/15 bg-black/35 px-3 py-3">
           <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
-            A-Z rider ledger | tap row for daily details
+            A-Z rider ledger | tap row for daily details | export from the top-right button
           </div>
-          {employees.length > 0 ? (
-            <button
-              onClick={() => downloadCSV(buildFleetCSV(employees, readingsByEmployee, config, thisMonth, fuelPriceHistory), `fleet_${thisMonth}.csv`)}
-              className="button-3d button-3d-outline flex items-center justify-center gap-2 px-4 py-2.5 font-display tracking-widest"
-            >
-              <FileDown className="h-4 w-4" /> EXPORT MONTHLY CSV
-            </button>
-          ) : null}
         </div>
 
         {monthlyReportRows.length === 0 ? (
