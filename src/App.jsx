@@ -1724,7 +1724,7 @@ const RouteSessionCard = ({ session, employee, points, selected, deleting, onSel
   );
 };
 
-const Modal = ({ open, onClose, title, children }) => {
+const Modal = ({ open, onClose, title, children, fullScreen = false }) => {
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -1755,17 +1755,37 @@ const Modal = ({ open, onClose, title, children }) => {
 
   if (!open || typeof document === 'undefined') return null;
 
+  const backdropClass = fullScreen
+    ? 'modal-backdrop fixed inset-0 z-[100] flex bg-[#05080c]'
+    : 'modal-backdrop fixed inset-0 z-[100] flex items-end justify-center bg-black/95 p-3 backdrop-blur-sm sm:items-center sm:p-5';
+  const shellClass = fullScreen
+    ? 'modal-shell flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col overflow-hidden rounded-none border-0 bg-[#05080c]'
+    : 'modal-shell flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-orange-500/30 bg-black sm:max-h-[90vh] lg:max-w-2xl';
+  const headerClass = fullScreen
+    ? 'sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-orange-500/15 bg-black/95 px-5 py-5 backdrop-blur sm:px-8 lg:px-10'
+    : 'sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-orange-500/15 bg-black/95 px-5 py-4 backdrop-blur';
+  const bodyClass = fullScreen
+    ? 'modal-scroll-area flex-1 overscroll-contain overflow-y-auto px-5 py-5 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-8 lg:px-10'
+    : 'modal-scroll-area overscroll-contain overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]';
+
   return createPortal(
-    <div className="modal-backdrop fixed inset-0 z-[100] flex items-end justify-center bg-black/95 p-3 backdrop-blur-sm sm:items-center sm:p-5">
-      <div className="modal-shell flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-orange-500/30 bg-black sm:max-h-[90vh] lg:max-w-2xl">
-        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-orange-500/15 bg-black/95 px-5 py-4 backdrop-blur">
-          <div className="font-display text-2xl text-white">{title}</div>
+    <div className={backdropClass}>
+      <div className={shellClass}>
+        <div className={headerClass}>
+          <div>
+            <div className="font-display text-3xl text-white sm:text-4xl">{title}</div>
+            {fullScreen ? (
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.28em] text-amber-500/70">
+                Rider profile editor
+              </div>
+            ) : null}
+          </div>
           <button onClick={onClose} className="text-zinc-500 transition-colors hover:text-orange-500">
-            <X className="h-5 w-5" />
+            <X className="h-6 w-6" />
           </button>
         </div>
-        <div ref={scrollRef} className="modal-scroll-area overscroll-contain overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-          {children}
+        <div ref={scrollRef} className={bodyClass}>
+          <div className={fullScreen ? 'mx-auto w-full max-w-6xl' : ''}>{children}</div>
         </div>
       </div>
     </div>,
@@ -2038,79 +2058,92 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
   };
 
   return (
-    <div>
-      <Input
-        label="Full Name"
-        icon={User}
-        value={form.name}
-        onChange={(event) => update('name', event.target.value)}
-        placeholder="Ali Hassan"
-      />
-      <Input
-        label="Username"
-        icon={Hash}
-        value={form.username}
-        onChange={(event) => update('username', event.target.value.toLowerCase().replace(/\s/g, ''))}
-        placeholder="ali.hassan"
-      />
-      <Input
-        label="Phone Number"
-        icon={Phone}
-        value={form.phone}
-        onChange={(event) => update('phone', event.target.value)}
-        placeholder="+92 300 1234567"
-      />
-      <Input
-        label="Bike Plate Number"
-        icon={Bike}
-        value={form.bikePlate}
-        onChange={(event) => update('bikePlate', event.target.value.toUpperCase())}
-        placeholder="LEA-1234"
-      />
-      <Input
-        label="Bike Model"
-        icon={Gauge}
-        value={form.bikeModel}
-        onChange={(event) => update('bikeModel', event.target.value)}
-        placeholder="Honda CD 70"
-      />
-      <Input
-        label="Mileage Override (km/L)"
-        icon={Fuel}
-        type="number"
-        value={form.mileage ?? ''}
-        onChange={(event) => update('mileage', event.target.value)}
-        placeholder="Leave blank to use default"
-      />
-      {isNew ? (
-        <Input
-          label="Initial 4-digit PIN"
-          icon={KeyRound}
-          type="password"
-          inputMode="numeric"
-          maxLength={4}
-          value={form.pin}
-          onChange={(event) => update('pin', event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
-          placeholder="1234"
-        />
-      ) : null}
-      {!isNew ? (
-        <label className="mb-4 flex items-center gap-2 font-mono text-xs text-zinc-400">
-          <input
-            type="checkbox"
-            checked={Boolean(form.active)}
-            onChange={(event) => update('active', event.target.checked)}
-          />
-          Rider is active
-        </label>
-      ) : null}
+    <div className="space-y-5">
+      <div className="surface-3d border border-orange-500/20 bg-black/55 p-4 sm:p-6">
+        <div className="mb-5 flex flex-col gap-2 border-b border-orange-500/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="font-display text-2xl text-white">{isNew ? 'Create rider profile' : form.name || 'Rider profile'}</div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.24em] text-zinc-500">
+              Login, phone, motorcycle and fuel mileage details
+            </div>
+          </div>
+          {!isNew ? (
+            <label className="inline-flex w-fit items-center gap-2 rounded-full border border-green-400/20 bg-green-400/10 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-green-300">
+              <input
+                type="checkbox"
+                checked={Boolean(form.active)}
+                onChange={(event) => update('active', event.target.checked)}
+              />
+              Rider is active
+            </label>
+          ) : null}
+        </div>
 
-      <div className="sticky bottom-0 z-10 -mx-5 mt-6 border-t border-orange-500/15 bg-black/95 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_40px_rgba(0,0,0,0.72)] backdrop-blur">
-        <div className="flex gap-2">
-          <button onClick={onCancel} className="mini-surface-3d flex-1 border border-zinc-800 bg-zinc-900 py-3 font-display tracking-widest text-zinc-400">
+        <div className="grid gap-x-4 sm:grid-cols-2">
+          <Input
+            label="Full Name"
+            icon={User}
+            value={form.name}
+            onChange={(event) => update('name', event.target.value)}
+            placeholder="Ali Hassan"
+          />
+          <Input
+            label="Username"
+            icon={Hash}
+            value={form.username}
+            onChange={(event) => update('username', event.target.value.toLowerCase().replace(/\s/g, ''))}
+            placeholder="ali.hassan"
+          />
+          <Input
+            label="Phone Number"
+            icon={Phone}
+            value={form.phone}
+            onChange={(event) => update('phone', event.target.value)}
+            placeholder="+92 300 1234567"
+          />
+          <Input
+            label="Bike Plate Number"
+            icon={Bike}
+            value={form.bikePlate}
+            onChange={(event) => update('bikePlate', event.target.value.toUpperCase())}
+            placeholder="LEA-1234"
+          />
+          <Input
+            label="Bike Model"
+            icon={Gauge}
+            value={form.bikeModel}
+            onChange={(event) => update('bikeModel', event.target.value)}
+            placeholder="Honda CD 70"
+          />
+          <Input
+            label="Mileage Override (km/L)"
+            icon={Fuel}
+            type="number"
+            value={form.mileage ?? ''}
+            onChange={(event) => update('mileage', event.target.value)}
+            placeholder="Leave blank to use default"
+          />
+          {isNew ? (
+            <Input
+              label="Initial 4-digit PIN"
+              icon={KeyRound}
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={form.pin}
+              onChange={(event) => update('pin', event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+              placeholder="1234"
+            />
+          ) : null}
+        </div>
+      </div>
+
+      <div className="surface-3d border border-orange-500/20 bg-black/55 p-4 sm:p-5">
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
+          <button onClick={onCancel} className="mini-surface-3d border border-zinc-800 bg-zinc-900 py-4 font-display tracking-widest text-zinc-400">
             CANCEL
           </button>
-          <button onClick={handleSave} className="glow-orange flex-1 bg-gradient-to-r from-orange-500 to-amber-500 py-3 font-display tracking-widest text-black">
+          <button onClick={handleSave} className="glow-orange bg-gradient-to-r from-orange-500 to-amber-500 py-4 font-display tracking-widest text-black">
             SAVE
           </button>
         </div>
@@ -2121,7 +2154,7 @@ const EmployeeForm = ({ employee, onSave, onDelete, onCancel }) => {
                 onDelete(employee.id);
               }
             }}
-            className="mini-surface-3d mt-3 flex w-full items-center justify-center gap-2 border border-red-500/40 py-2.5 font-display tracking-widest text-red-400 hover:bg-red-500/10"
+            className="mini-surface-3d mt-3 flex w-full items-center justify-center gap-2 border border-red-500/40 py-3 font-display tracking-widest text-red-400 hover:bg-red-500/10"
           >
             <Trash2 className="h-4 w-4" /> DELETE RIDER
           </button>
@@ -3022,7 +3055,7 @@ const AdminEmployees = ({ employees, onSave, onDelete, onResetPin }) => {
         </div>
       )}
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'EDIT RIDER' : 'NEW RIDER'}>
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'EDIT RIDER' : 'NEW RIDER'} fullScreen>
         <EmployeeForm
           employee={editing}
           onSave={async (employee, options) => {
@@ -3535,7 +3568,7 @@ const EmployeeDetailView = ({
         </div>
       </div>
 
-      <Modal open={showEdit} onClose={() => setShowEdit(false)} title="EDIT RIDER">
+      <Modal open={showEdit} onClose={() => setShowEdit(false)} title="EDIT RIDER" fullScreen>
         <EmployeeForm
           employee={employee}
           onSave={async (nextEmployee, options) => {
