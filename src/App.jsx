@@ -3290,17 +3290,40 @@ const ResetPinModal = ({ employee, busy, onClose, onConfirm }) => {
   );
 };
 
+const FUEL_FEED_URL =
+  'https://raw.githubusercontent.com/chabdulhanan555-star/fleetline-supabase/main/data/fuel-prices.json';
+
 const AdminSettings = ({ config, fuelPriceHistory = [], onSave }) => {
   const [form, setForm] = useState(config);
   const [saved, setSaved] = useState(false);
-  const [quickEditOpen, setQuickEditOpen] = useState(false);
-  const [quickPrice, setQuickPrice] = useState('');
-  const [quickSaving, setQuickSaving] = useState(false);
-  const [quickSaved, setQuickSaved] = useState(false);
+  const [feed, setFeed] = useState(null);
+  const [feedApplying, setFeedApplying] = useState(false);
+  const [feedApplied, setFeedApplied] = useState(false);
+  const [feedDismissed, setFeedDismissed] = useState(false);
 
   useEffect(() => {
     setForm(config);
   }, [config]);
+
+  // Pull the latest scraped fuel price from the GitHub-hosted feed.
+  // Cache-busted with the current hour so we get a refresh at most hourly
+  // (the GitHub raw URL is CDN-cached).
+  useEffect(() => {
+    let cancelled = false;
+    const cacheBuster = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+    fetch(`${FUEL_FEED_URL}?t=${cacheBuster}`, { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setFeed(data);
+      })
+      .catch(() => {
+        // Silent fail -- feed is a nice-to-have, manual entry still works.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSave = async () => {
     try {
@@ -3312,37 +3335,28 @@ const AdminSettings = ({ config, fuelPriceHistory = [], onSave }) => {
     }
   };
 
-  const lastUpdateDate = fuelPriceHistory[0]?.date || null;
-  const daysSinceUpdate = lastUpdateDate
-    ? Math.floor((Date.parse(today()) - Date.parse(lastUpdateDate)) / 86400000)
-    : null;
+  const feedPetrol = feed?.petrol ?? null;
+  const currentPrice = Number(form.fuelPrice);
+  const feedDiffers =
+    feedPetrol &&
+    Number.isFinite(feedPetrol) &&
+    Number.isFinite(currentPrice) &&
+    Math.abs(feedPetrol - currentPrice) > 0.01;
+  const feedFreshness = feed?.lastSuccessfulFetch ? Date.parse(feed.lastSuccessfulFetch) : null;
+  const feedHoursOld = feedFreshness ? Math.floor((Date.now() - feedFreshness) / 3600000) : null;
 
-  const fuelStatus = (() => {
-    if (daysSinceUpdate === null) return null;
-    if (daysSinceUpdate < 14) return 'fresh';
-    if (daysSinceUpdate < 30) return 'stale';
-    return 'very-stale';
-  })();
-
-  const openQuickUpdate = () => {
-    setQuickPrice(String(form.fuelPrice ?? ''));
-    setQuickEditOpen(true);
-  };
-
-  const handleQuickApply = async () => {
-    const next = Number(quickPrice);
-    if (!Number.isFinite(next) || next <= 0) return;
-    setQuickSaving(true);
+  const handleApplyFeedPrice = async () => {
+    if (!feedPetrol) return;
+    setFeedApplying(true);
     try {
-      await onSave({ ...form, fuelPrice: next });
-      setForm((current) => ({ ...current, fuelPrice: next }));
-      setQuickEditOpen(false);
-      setQuickSaved(true);
-      window.setTimeout(() => setQuickSaved(false), 2200);
+      await onSave({ ...form, fuelPrice: feedPetrol });
+      setForm((current) => ({ ...current, fuelPrice: feedPetrol }));
+      setFeedApplied(true);
+      window.setTimeout(() => setFeedApplied(false), 2400);
     } catch {
       // Toast handled upstream
     } finally {
-      setQuickSaving(false);
+      setFeedApplying(false);
     }
   };
 
@@ -3369,73 +3383,58 @@ const AdminSettings = ({ config, fuelPriceHistory = [], onSave }) => {
           value={form.fuelPrice}
           onChange={(event) => setForm((current) => ({ ...current, fuelPrice: event.target.value }))}
         />
-        {fuelStatus === 'fresh' ? (
-          <div className="-mt-2 mb-4 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-green-400/80">
-            <CheckCircle className="h-3 w-3" />
-            Updated {daysSinceUpdate === 0 ? 'today' : `${daysSinceUpdate} day${daysSinceUpdate === 1 ? '' : 's'} ago`}
-          </div>
-        ) : null}
-        {quickSaved ? (
+        {feedApplied ? (
           <div className="-mt-2 mb-4 flex items-center gap-2 border border-green-500/30 bg-green-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-green-300">
-            <CheckCircle className="h-3.5 w-3.5" /> New fuel price saved
+            <CheckCircle className="h-3.5 w-3.5" /> Applied feed price
           </div>
         ) : null}
-        {(fuelStatus === 'stale' || fuelStatus === 'very-stale') && !quickSaved ? (
-          <div
-            className={`mb-4 border p-4 ${
-              fuelStatus === 'very-stale'
-                ? 'border-red-500/35 bg-red-500/10'
-                : 'border-amber-400/35 bg-amber-400/10'
-            }`}
-          >
-            <div className="mb-2 flex items-center gap-2">
-              <Fuel className={`h-4 w-4 ${fuelStatus === 'very-stale' ? 'text-red-300' : 'text-amber-300'}`} />
-              <div className={`font-mono text-[10px] uppercase tracking-widest ${fuelStatus === 'very-stale' ? 'text-red-200' : 'text-amber-200'}`}>
-                Last updated {daysSinceUpdate} days ago
+        {feedDiffers && !feedDismissed && !feedApplied ? (
+          <div className="mb-4 border border-orange-500/40 bg-orange-500/10 p-4">
+            <div className="mb-1 flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-orange-300" />
+              <div className="font-mono text-[10px] uppercase tracking-widest text-orange-200">
+                News feed shows new price
               </div>
             </div>
             <div className="text-sm text-zinc-300">
-              {fuelStatus === 'very-stale'
-                ? 'Almost certainly outdated. OGRA usually revises fuel prices every 14 days.'
-                : 'Pakistani fuel prices usually change every 14 days. Tap Quick Update if it changed.'}
+              <span className="font-display text-2xl text-amber-300">{form.currency} {feedPetrol.toFixed(2)}</span>
+              <span className="ml-2 text-zinc-500">vs your saved {form.currency} {currentPrice.toFixed(2)}</span>
             </div>
-
-            {!quickEditOpen ? (
+            <div className="mt-1 font-mono text-[10px] text-zinc-500">
+              Source: {feed?.source || 'feed'}
+              {feedHoursOld !== null
+                ? ` · fetched ${feedHoursOld === 0 ? '<1 hr' : `${feedHoursOld} hr${feedHoursOld === 1 ? '' : 's'}`} ago`
+                : ''}
+            </div>
+            <div className="mt-3 flex gap-2">
               <button
-                onClick={openQuickUpdate}
-                className="button-3d button-3d-primary glow-orange mt-3 flex w-full items-center justify-center gap-2 px-4 py-2.5 font-display tracking-widest"
+                onClick={() => setFeedDismissed(true)}
+                disabled={feedApplying}
+                className="mini-surface-3d border border-zinc-800 bg-zinc-900 px-4 py-2 font-mono text-xs uppercase tracking-widest text-zinc-300 disabled:opacity-50"
               >
-                <RefreshCw className="h-4 w-4" /> QUICK UPDATE
+                Dismiss
               </button>
-            ) : (
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={quickPrice}
-                  onChange={(event) => setQuickPrice(event.target.value)}
-                  placeholder={`New ${form.currency || 'PKR'} / L`}
-                  className="field-focus min-h-[44px] flex-1 border border-zinc-800 bg-black px-3 py-2 text-white"
-                  autoFocus
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setQuickEditOpen(false)}
-                    disabled={quickSaving}
-                    className="mini-surface-3d border border-zinc-800 bg-zinc-900 px-4 font-mono text-xs uppercase tracking-widest text-zinc-300 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleQuickApply}
-                    disabled={quickSaving || !quickPrice || Number(quickPrice) <= 0}
-                    className="button-3d button-3d-primary px-5 py-2 font-display tracking-widest disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {quickSaving ? 'SAVING' : 'APPLY'}
-                  </button>
-                </div>
-              </div>
-            )}
+              <button
+                onClick={handleApplyFeedPrice}
+                disabled={feedApplying}
+                className="button-3d button-3d-primary glow-orange flex flex-1 items-center justify-center gap-2 px-4 py-2 font-display tracking-widest disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {feedApplying ? 'APPLYING' : `APPLY ${form.currency} ${feedPetrol.toFixed(2)}`}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {feed && feed.success && !feedDiffers && !feedApplied ? (
+          <div className="-mt-2 mb-4 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-green-400/70">
+            <CheckCircle className="h-3 w-3" />
+            Feed matches saved price
+            {feed.source ? <span className="text-zinc-600">· {feed.source}</span> : null}
+          </div>
+        ) : null}
+        {feed && feed.success === false ? (
+          <div className="-mt-2 mb-4 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+            <RefreshCw className="h-3 w-3" />
+            Feed unavailable · using your saved price
           </div>
         ) : null}
         <Input
