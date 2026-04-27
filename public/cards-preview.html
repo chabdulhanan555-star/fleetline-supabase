@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>FleetLine — Card Style Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;700&family=Manrope:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --orange: #d97706;
+      --orange-bright: #f59e0b;
+      --amber: #fbbf24;
+      --teal: #2dd4bf;
+      --bg: #0b0f14;
+      --bg-deep: #05080c;
+      --panel: #0f1e18;
+      --zinc-950: #09090b;
+      --zinc-800: #27272a;
+      --zinc-500: #71717a;
+      --text: #fafafa;
+      --text-dim: #a1a1aa;
+      --text-mute: #71717a;
+      --green: #22c55e;
+      --red: #ef4444;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+      overflow-x: hidden;
+    }
+
+    body {
+      background:
+        radial-gradient(ellipse at 18% 8%, rgba(217, 119, 6, 0.16), transparent 24rem),
+        radial-gradient(ellipse at 92% 18%, rgba(15, 118, 110, 0.12), transparent 22rem),
+        linear-gradient(rgba(217,119,6,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(217,119,6,0.04) 1px, transparent 1px),
+        linear-gradient(135deg, var(--bg-deep), var(--bg));
+      background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px, 100% 100%;
+      min-height: 100vh;
+    }
+
+    .display { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.02em; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    /* ===== Section header ===== */
+    .section-header {
+      margin: 56px 0 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px dashed rgba(217, 119, 6, 0.18);
+    }
+    .section-header:first-child { margin-top: 0; }
+    .section-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--orange-bright);
+      margin-bottom: 8px;
+    }
+    .section-tag::before { content: '//'; opacity: 0.6; }
+    .section-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 44px;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      margin: 0 0 6px;
+      color: var(--text);
+    }
+    .section-title .accent { color: var(--orange-bright); }
+    .section-desc {
+      font-size: 14px;
+      color: var(--text-dim);
+      max-width: 64ch;
+      margin: 0;
+    }
+
+    h1.hero-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(48px, 8vw, 80px);
+      letter-spacing: 0.01em;
+      line-height: 1;
+      margin: 0 0 12px;
+    }
+    h1.hero-title .gold {
+      background: linear-gradient(135deg, var(--amber), var(--orange));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero-sub {
+      font-size: 16px;
+      color: var(--text-dim);
+      max-width: 60ch;
+    }
+
+    /* ===== Card grid (each section uses this) ===== */
+    .card-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 700px) { .card-grid { grid-template-columns: 1fr; } }
+
+    /* ===== Common card sizing ===== */
+    .stat-card {
+      padding: 18px;
+      border-radius: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-mute);
+      margin-bottom: 8px;
+    }
+    .stat-card .value {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 44px;
+      line-height: 1;
+      color: var(--orange-bright);
+    }
+    .stat-card .unit {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-mute);
+      margin-left: 4px;
+    }
+
+    .rider-card {
+      padding: 18px;
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .rider-card .top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .avatar {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 24px;
+      color: var(--orange-bright);
+      background: linear-gradient(135deg, rgba(217,119,6,0.25), rgba(245,158,11,0.10));
+      border: 1px solid rgba(217, 119, 6, 0.4);
+      flex-shrink: 0;
+    }
+    .rider-card .name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 22px;
+      letter-spacing: 0.01em;
+      line-height: 1.05;
+    }
+    .rider-card .meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--text-mute);
+      margin-top: 2px;
+    }
+    .pills {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .pill {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(217, 119, 6, 0.18);
+    }
+    .pill .k {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--text-mute);
+    }
+    .pill .v {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 20px;
+      line-height: 1;
+      color: var(--amber);
+      margin-top: 2px;
+    }
+
+    /* ============================================== */
+    /* BASELINE — current app style                   */
+    /* ============================================== */
+    .style-current .stat-card,
+    .style-current .rider-card {
+      background:
+        linear-gradient(145deg, rgba(255,253,247,0.07), transparent 38%),
+        linear-gradient(155deg, rgba(23,32,42,0.98), rgba(8,12,17,0.98));
+      border: 1px solid var(--zinc-800);
+      box-shadow:
+        0 26px 56px rgba(0,0,0,0.36),
+        0 7px 0 rgba(0,0,0,0.24),
+        inset 0 1px 0 rgba(255,253,247,0.13);
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+    .style-current .stat-card:hover,
+    .style-current .rider-card:hover {
+      transform: translateY(-3px);
+      box-shadow:
+        0 34px 68px rgba(0,0,0,0.42),
+        0 9px 0 rgba(0,0,0,0.22),
+        inset 0 1px 0 rgba(255,253,247,0.16);
+    }
+
+    /* ============================================== */
+    /* A — GLASS MORPHISM                             */
+    /* ============================================== */
+    .style-a .stat-card,
+    .style-a .rider-card {
+      background: rgba(217, 119, 6, 0.06);
+      backdrop-filter: blur(16px) saturate(140%);
+      -webkit-backdrop-filter: blur(16px) saturate(140%);
+      border: 1px solid rgba(217, 119, 6, 0.30);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.10),
+        0 12px 40px rgba(0,0,0,0.30);
+      transition: all 280ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .style-a .stat-card:hover,
+    .style-a .rider-card:hover {
+      background: rgba(245, 158, 11, 0.10);
+      border-color: rgba(245, 158, 11, 0.55);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 24px 60px rgba(0,0,0,0.50),
+        0 0 60px rgba(245, 158, 11, 0.12);
+      transform: translateY(-2px);
+    }
+    .style-a .pill {
+      background: rgba(0, 0, 0, 0.20);
+      backdrop-filter: blur(8px);
+      border-color: rgba(245, 158, 11, 0.18);
+    }
+
+    /* ============================================== */
+    /* B — MAGNETIC OUTLINE                           */
+    /* ============================================== */
+    .style-b .stat-card,
+    .style-b .rider-card {
+      background: rgba(11, 15, 20, 0.55);
+      border: 1px solid rgba(217, 119, 6, 0.30);
+      transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+    .style-b .stat-card:hover,
+    .style-b .rider-card:hover {
+      border-color: var(--amber);
+      background: rgba(11, 15, 20, 0.78);
+      box-shadow:
+        inset 0 0 22px rgba(245, 158, 11, 0.10),
+        0 0 0 1px rgba(245, 158, 11, 0.35);
+    }
+    /* Magnetic pull is added via JS — see bottom */
+
+    /* ============================================== */
+    /* C — HOLOGRAPHIC EDGE                           */
+    /* ============================================== */
+    .style-c .stat-card,
+    .style-c .rider-card {
+      position: relative;
+      background: linear-gradient(155deg, rgba(23, 32, 42, 0.96), rgba(5, 8, 12, 0.96));
+      border: 1px solid transparent;
+      transition: transform 220ms ease;
+    }
+    .style-c .stat-card::before,
+    .style-c .rider-card::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      padding: 1px;
+      background: conic-gradient(
+        from var(--holo-angle, 0deg),
+        var(--orange) 0%,
+        var(--amber) 25%,
+        var(--teal) 50%,
+        var(--amber) 75%,
+        var(--orange) 100%
+      );
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: holo-rotate 6s linear infinite;
+      pointer-events: none;
+    }
+    @property --holo-angle {
+      syntax: '<angle>';
+      inherits: false;
+      initial-value: 0deg;
+    }
+    @keyframes holo-rotate {
+      from { --holo-angle: 0deg; }
+      to { --holo-angle: 360deg; }
+    }
+    .style-c .stat-card::after,
+    .style-c .rider-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(
+        110deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.18) 45%,
+        rgba(255, 255, 255, 0.30) 50%,
+        rgba(255, 255, 255, 0.18) 55%,
+        transparent 70%
+      );
+      transform: translateX(-120%);
+      transition: transform 720ms cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+    }
+    .style-c .stat-card:hover::after,
+    .style-c .rider-card:hover::after {
+      transform: translateX(120%);
+    }
+    .style-c .stat-card:hover,
+    .style-c .rider-card:hover {
+      transform: translateY(-2px);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .style-c .stat-card::before,
+      .style-c .rider-card::before { animation: none; }
+      .style-c .stat-card::after,
+      .style-c .rider-card::after { display: none; }
+    }
+
+    /* ============================================== */
+    /* D — GLOW FOLLOW                                */
+    /* ============================================== */
+    .style-d .stat-card,
+    .style-d .rider-card {
+      position: relative;
+      background:
+        linear-gradient(155deg, rgba(23, 32, 42, 0.98), rgba(8, 12, 17, 0.98));
+      border: 1px solid var(--zinc-800);
+      box-shadow: 0 16px 36px rgba(0,0,0,0.32);
+      overflow: hidden;
+      transition: border-color 220ms ease;
+    }
+    .style-d .stat-card::before,
+    .style-d .rider-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(
+        220px circle at var(--mx, 50%) var(--my, 50%),
+        rgba(245, 158, 11, 0.18),
+        transparent 60%
+      );
+      opacity: 0;
+      transition: opacity 240ms ease;
+      pointer-events: none;
+    }
+    .style-d .stat-card:hover,
+    .style-d .rider-card:hover {
+      border-color: rgba(245, 158, 11, 0.40);
+    }
+    .style-d .stat-card:hover::before,
+    .style-d .rider-card:hover::before {
+      opacity: 1;
+    }
+    .style-d .stat-card > *,
+    .style-d .rider-card > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ===== Approval / footer ===== */
+    .approval {
+      margin-top: 80px;
+      padding: 32px;
+      border: 1px solid rgba(245, 158, 11, 0.30);
+      border-radius: 18px;
+      background: linear-gradient(155deg, rgba(217, 119, 6, 0.10), rgba(11, 15, 20, 0.85));
+      text-align: center;
+    }
+    .legend {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      text-align: left;
+    }
+    .legend-row {
+      padding: 12px;
+      border: 1px dashed rgba(245, 158, 11, 0.30);
+      border-radius: 10px;
+      background: rgba(11, 15, 20, 0.40);
+    }
+    .legend-row .k {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--orange-bright);
+      margin-bottom: 4px;
+    }
+    .legend-row .v {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .footer-note {
+      text-align: center;
+      color: var(--text-mute);
+      font-size: 12px;
+      margin-top: 28px;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+
+    <!-- ===== HERO ===== -->
+    <header style="margin-bottom: 32px;">
+      <div class="section-tag">FleetLine · Card Style Preview</div>
+      <h1 class="hero-title">Pick your <span class="gold">card style</span></h1>
+      <p class="hero-sub">
+        Same data, same color scheme — four different ways the cards can feel.
+        Hover each one. Notice the lift, the glow, the polish. Then tell me which letter to apply across the app.
+      </p>
+    </header>
+
+    <!-- ===== BASELINE ===== -->
+    <div class="section-header">
+      <div class="section-tag">Baseline</div>
+      <h2 class="section-title">Current style <span class="accent">(today)</span></h2>
+      <p class="section-desc">3D pressable shadow + amber border. What the live app uses now.</p>
+    </div>
+    <div class="card-grid style-current">
+      <div class="stat-card">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== A · GLASS ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option A</div>
+      <h2 class="section-title">Glass <span class="accent">morphism</span></h2>
+      <p class="section-desc">Frosted translucent panels. Backdrop blurs whatever is behind them. Subtle amber edge. <em>Premium, weightless.</em></p>
+    </div>
+    <div class="card-grid style-a">
+      <div class="stat-card">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== B · MAGNETIC ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option B · my pick for daily use</div>
+      <h2 class="section-title">Magnetic <span class="accent">outline</span></h2>
+      <p class="section-desc">Thin amber border, mostly invisible until you approach. Card pulls toward your cursor. Inner glow on hover. <em>Refined, fintech-modern.</em></p>
+    </div>
+    <div class="card-grid style-b" data-magnetic>
+      <div class="stat-card magnetic">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card magnetic">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== C · HOLOGRAPHIC ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option C</div>
+      <h2 class="section-title">Holographic <span class="accent">edge</span></h2>
+      <p class="section-desc">Animated rainbow border (orange → amber → teal → orange) cycling slowly. On hover, a diagonal light sweep crosses the card. <em>Cinematic, attention-grabbing.</em></p>
+    </div>
+    <div class="card-grid style-c">
+      <div class="stat-card">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== D · GLOW FOLLOW ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option D</div>
+      <h2 class="section-title">Glow <span class="accent">follow</span></h2>
+      <p class="section-desc">A soft amber light tracks your cursor inside the card, like a flashlight. Borders also brighten on hover. <em>Interactive, "the app is alive".</em></p>
+    </div>
+    <div class="card-grid style-d" data-glow>
+      <div class="stat-card glow">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card glow">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== APPROVAL ===== -->
+    <section class="approval">
+      <div class="section-tag" style="justify-content: center;">Pick one</div>
+      <h2 class="section-title" style="margin-bottom: 12px;">Tell me which letter.</h2>
+      <p style="color: var(--text-dim); max-width: 56ch; margin: 0 auto;">
+        I'll roll the chosen style across every card in the app — stat cards, rider cards, daily close rows, monthly ledger rows, modals, hero card, empty states.
+      </p>
+      <div class="legend">
+        <div class="legend-row">
+          <div class="k">Baseline</div>
+          <div class="v">Current 3D pressable look. Keep as-is.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">A · Glass</div>
+          <div class="v">Premium / iOS feel. Soft and elegant.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">B · Magnetic</div>
+          <div class="v">Refined / fintech. Best for daily use.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">C · Holographic</div>
+          <div class="v">Cinematic / wow. Bold first impression.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">D · Glow Follow</div>
+          <div class="v">Interactive / alive. Like Vercel's site.</div>
+        </div>
+      </div>
+      <div class="footer-note">
+        Performance: every effect is CSS-only or single-frame requestAnimationFrame.
+        All animations honour <code class="mono">prefers-reduced-motion</code>. No lag.
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // ============================================
+    // OPTION B · Magnetic pull toward cursor
+    // ============================================
+    (() => {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const grid = document.querySelector('[data-magnetic]');
+      if (!grid || reduce) return;
+
+      const PULL = 6; // max px translate
+      const cards = grid.querySelectorAll('.magnetic');
+      let raf = null;
+      let pendingTarget = null;
+      let pendingX = 0, pendingY = 0;
+
+      cards.forEach((card) => {
+        card.addEventListener('mousemove', (e) => {
+          const rect = card.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const dx = (e.clientX - cx) / (rect.width / 2);
+          const dy = (e.clientY - cy) / (rect.height / 2);
+          pendingTarget = card;
+          pendingX = dx * PULL;
+          pendingY = dy * PULL;
+          if (!raf) raf = requestAnimationFrame(apply);
+        });
+        card.addEventListener('mouseleave', () => {
+          pendingTarget = card;
+          pendingX = 0;
+          pendingY = 0;
+          if (!raf) raf = requestAnimationFrame(apply);
+        });
+      });
+
+      function apply() {
+        if (pendingTarget) {
+          pendingTarget.style.transform = `translate3d(${pendingX}px, ${pendingY}px, 0)`;
+        }
+        raf = null;
+      }
+    })();
+
+    // ============================================
+    // OPTION D · Glow follow cursor (CSS variables)
+    // ============================================
+    (() => {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const grid = document.querySelector('[data-glow]');
+      if (!grid || reduce) return;
+
+      const cards = grid.querySelectorAll('.glow');
+      cards.forEach((card) => {
+        card.addEventListener('mousemove', (e) => {
+          const rect = card.getBoundingClientRect();
+          const x = ((e.clientX - rect.left) / rect.width) * 100;
+          const y = ((e.clientY - rect.top) / rect.height) * 100;
+          card.style.setProperty('--mx', x + '%');
+          card.style.setProperty('--my', y + '%');
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
