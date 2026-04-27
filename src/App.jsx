@@ -2972,69 +2972,6 @@ const AdminReportsPanel = ({
   );
 };
 
-const AdminCloseSheetPanel = ({
-  employees,
-  readingsByEmployee,
-  config,
-  routeSessions,
-  routePoints,
-  fuelPriceHistory,
-  dailyReviews,
-  onSelectEmployee,
-  onPreviewPhoto,
-  onSaveDailyReview,
-}) => {
-  const [now, setNow] = useState(() => new Date());
-  const closeDate = today();
-  const closeRows = buildDailyCloseRows({
-    employees,
-    readingsByEmployee,
-    config,
-    routeSessions,
-    routePoints,
-    dailyReviews,
-    fuelPriceHistory,
-    date: closeDate,
-    now,
-  });
-  const completeCount = closeRows.filter((row) => row.daySummary.complete).length;
-  const problemCount = closeRows.filter((row) => row.flags.length > 0).length;
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(new Date()), 60000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  return (
-    <div className="dashboard-3d space-y-4 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500/70">// Daily Close</div>
-          <div className="font-display text-3xl leading-none text-white">{fmtDate(closeDate)}</div>
-          <div className="mt-1 text-xs text-zinc-500">
-            Use this after evening submissions to approve clean rider days and mark problems before month-end payment.
-          </div>
-        </div>
-        <PackageCheck className="h-7 w-7 text-orange-500" />
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        <StatCard label="Riders" value={closeRows.length} unit="today" icon={Users} accent="orange" />
-        <StatCard label="Complete" value={completeCount} unit="days" icon={CheckCircle} accent="teal" />
-        <StatCard label="Problems" value={problemCount} unit="flags" icon={Shield} accent={problemCount ? 'gold' : 'white'} />
-      </div>
-
-      <DailyCloseSheet
-        rows={closeRows}
-        config={config}
-        onSelectEmployee={onSelectEmployee}
-        onPreviewPhoto={onPreviewPhoto}
-        onSaveDailyReview={onSaveDailyReview}
-      />
-    </div>
-  );
-};
-
 const AdminRoutesPanel = ({ employees, routeSessions, routePoints, deletingRouteId, onLoadRoutePoints, onDeleteRouteSession }) => {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
@@ -5235,20 +5172,6 @@ export default function App() {
                 onSelectEmployee={setSelectedEmployeeId}
               />
             ) : null}
-            {adminTab === 'close' ? (
-              <AdminCloseSheetPanel
-                employees={employees}
-                readingsByEmployee={readingsByEmployee}
-                config={config}
-                routeSessions={routeSessions}
-                routePoints={routePoints}
-                fuelPriceHistory={fuelPriceHistory}
-                dailyReviews={dailyReviews}
-                onSelectEmployee={setSelectedEmployeeId}
-                onPreviewPhoto={handlePreviewPhoto}
-                onSaveDailyReview={handleSaveDailyReview}
-              />
-            ) : null}
             {adminTab === 'employees' ? (
               <AdminEmployees
                 employees={employees}
@@ -5291,7 +5214,6 @@ export default function App() {
           <div className="no-scrollbar flex overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 },
-              { id: 'close', label: 'Close', icon: PackageCheck },
               { id: 'employees', label: 'Riders', icon: Users },
               { id: 'routes', label: 'Routes', icon: Route },
               { id: 'reports', label: 'Reports', icon: FileDown },
