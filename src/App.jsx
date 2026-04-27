@@ -2499,8 +2499,9 @@ const AdminOverview = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
         <StatCard label="In Market" value={inMarketCount} unit="riders" icon={Route} accent="teal" />
+        <StatCard label="Missing Morning" value={morningAlerts} unit="alerts" icon={Sun} accent={morningAlerts ? 'gold' : 'white'} />
         <StatCard label="Missing Evening" value={eveningAlerts} unit="alerts" icon={Moon} accent={eveningAlerts ? 'gold' : 'white'} />
         <StatCard label="GPS Active" value={activeRouteCount} unit="routes" icon={MapPin} accent="orange" />
         <StatCard label="Needs Review" value={needsReviewCount} unit="items" icon={Shield} accent={needsReviewCount ? 'gold' : 'white'} />
