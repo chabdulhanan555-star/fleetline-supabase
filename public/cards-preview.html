@@ -406,6 +406,195 @@
       z-index: 1;
     }
 
+    /* ============================================== */
+    /* CLAUDE-DESIGN-INSPIRED STYLES (E-I)            */
+    /* Anthropic palette: warm coral, cream highlights, */
+    /* generous padding, gentle radii, soft shadows.   */
+    /* ============================================== */
+    :root {
+      --coral: #E27D60;
+      --coral-bright: #E89B7E;
+      --coral-soft: rgba(226, 125, 96, 0.18);
+      --cream: #F5E6D3;
+      --cream-soft: rgba(245, 230, 211, 0.08);
+    }
+
+    /* Claude styles use larger radii + more padding */
+    .claude-style .stat-card,
+    .claude-style .rider-card {
+      border-radius: 22px;
+      padding: 22px;
+    }
+    .claude-style .pill { border-radius: 14px; padding: 10px 12px; }
+    .claude-style .avatar { border-radius: 16px; }
+
+    /* ============================================== */
+    /* E — CLAUDE PEBBLE                              */
+    /* Heavily rounded, almost no chrome, gentle lift */
+    /* ============================================== */
+    .style-e .stat-card,
+    .style-e .rider-card {
+      background: linear-gradient(155deg, rgba(45, 32, 26, 0.85), rgba(20, 14, 10, 0.92));
+      border: 1px solid rgba(226, 125, 96, 0.20);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      transition: all 320ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .style-e .stat-card:hover,
+    .style-e .rider-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--coral);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(226, 125, 96, 0.30);
+    }
+    .style-e .value { color: var(--coral-bright); }
+    .style-e .name { color: var(--cream); }
+    .style-e .v { color: var(--coral-bright); }
+    .style-e .avatar { color: var(--coral-bright); border-color: rgba(226, 125, 96, 0.4); background: linear-gradient(135deg, rgba(226, 125, 96, 0.25), rgba(245, 230, 211, 0.05)); }
+
+    /* ============================================== */
+    /* F — CLAUDE WARM GLASS                          */
+    /* Frosted glass with coral undertone             */
+    /* ============================================== */
+    .style-f .stat-card,
+    .style-f .rider-card {
+      background: rgba(226, 125, 96, 0.06);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid rgba(245, 230, 211, 0.12);
+      box-shadow:
+        inset 0 1px 0 rgba(245, 230, 211, 0.10),
+        0 8px 32px rgba(0, 0, 0, 0.25);
+      transition: all 320ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .style-f .stat-card:hover,
+    .style-f .rider-card:hover {
+      background: rgba(232, 155, 126, 0.10);
+      border-color: rgba(226, 125, 96, 0.45);
+      box-shadow:
+        inset 0 1px 0 rgba(245, 230, 211, 0.18),
+        0 16px 50px rgba(0, 0, 0, 0.40),
+        0 0 50px rgba(226, 125, 96, 0.10);
+    }
+    .style-f .value { color: var(--coral-bright); }
+    .style-f .name { color: var(--cream); }
+    .style-f .v { color: var(--coral-bright); }
+    .style-f .pill { background: rgba(20, 14, 10, 0.30); border-color: rgba(226, 125, 96, 0.18); }
+    .style-f .avatar { color: var(--coral-bright); }
+
+    /* ============================================== */
+    /* G — CLAUDE SOFT GLOW                           */
+    /* Warm coral spotlight follows cursor            */
+    /* ============================================== */
+    .style-g .stat-card,
+    .style-g .rider-card {
+      position: relative;
+      background: linear-gradient(155deg, rgba(35, 24, 18, 0.92), rgba(15, 10, 7, 0.96));
+      border: 1px solid rgba(245, 230, 211, 0.10);
+      overflow: hidden;
+      transition: border-color 280ms ease;
+    }
+    .style-g .stat-card::before,
+    .style-g .rider-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(
+        260px circle at var(--mx, 50%) var(--my, 50%),
+        rgba(232, 155, 126, 0.22),
+        rgba(226, 125, 96, 0.08) 30%,
+        transparent 70%
+      );
+      opacity: 0;
+      transition: opacity 320ms ease;
+      pointer-events: none;
+    }
+    .style-g .stat-card:hover,
+    .style-g .rider-card:hover {
+      border-color: rgba(226, 125, 96, 0.40);
+    }
+    .style-g .stat-card:hover::before,
+    .style-g .rider-card:hover::before {
+      opacity: 1;
+    }
+    .style-g .stat-card > *,
+    .style-g .rider-card > * { position: relative; z-index: 1; }
+    .style-g .value { color: var(--coral-bright); }
+    .style-g .name { color: var(--cream); }
+    .style-g .v { color: var(--coral-bright); }
+    .style-g .avatar { color: var(--coral-bright); }
+
+    /* ============================================== */
+    /* H — CLAUDE BREATHE                             */
+    /* Subtle continuous gentle pulse (idle anim)     */
+    /* ============================================== */
+    @keyframes claude-breathe {
+      0%, 100% {
+        box-shadow:
+          0 8px 24px rgba(0, 0, 0, 0.25),
+          0 0 0 0 rgba(226, 125, 96, 0.0);
+      }
+      50% {
+        box-shadow:
+          0 12px 30px rgba(0, 0, 0, 0.30),
+          0 0 28px 0 rgba(226, 125, 96, 0.10);
+      }
+    }
+    .style-h .stat-card,
+    .style-h .rider-card {
+      background: linear-gradient(155deg, rgba(35, 24, 18, 0.92), rgba(15, 10, 7, 0.96));
+      border: 1px solid rgba(226, 125, 96, 0.18);
+      animation: claude-breathe 4s ease-in-out infinite;
+      transition: all 280ms ease;
+    }
+    .style-h .stat-card:hover,
+    .style-h .rider-card:hover {
+      animation-play-state: paused;
+      border-color: var(--coral);
+      transform: translateY(-2px);
+      box-shadow:
+        0 16px 36px rgba(0, 0, 0, 0.36),
+        0 0 32px 0 rgba(226, 125, 96, 0.20);
+    }
+    .style-h .value { color: var(--coral-bright); }
+    .style-h .name { color: var(--cream); }
+    .style-h .v { color: var(--coral-bright); }
+    .style-h .avatar { color: var(--coral-bright); }
+    @media (prefers-reduced-motion: reduce) {
+      .style-h .stat-card,
+      .style-h .rider-card { animation: none; }
+    }
+
+    /* ============================================== */
+    /* I — CLAUDE PILLOW                              */
+    /* Pillow-soft drop shadow, no border, generous   */
+    /* ============================================== */
+    .style-i .stat-card,
+    .style-i .rider-card {
+      background: linear-gradient(155deg, rgba(40, 28, 22, 0.92), rgba(18, 12, 8, 0.96));
+      border: none;
+      padding: 26px;
+      border-radius: 26px;
+      box-shadow:
+        0 1px 0 rgba(245, 230, 211, 0.06) inset,
+        0 4px 8px rgba(0, 0, 0, 0.18),
+        0 16px 40px rgba(0, 0, 0, 0.32);
+      transition: all 360ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .style-i .stat-card:hover,
+    .style-i .rider-card:hover {
+      transform: translateY(-4px);
+      box-shadow:
+        0 1px 0 rgba(245, 230, 211, 0.10) inset,
+        0 8px 16px rgba(0, 0, 0, 0.20),
+        0 28px 60px rgba(0, 0, 0, 0.42),
+        0 0 0 1px rgba(226, 125, 96, 0.20);
+    }
+    .style-i .value { color: var(--coral-bright); }
+    .style-i .name { color: var(--cream); }
+    .style-i .v { color: var(--coral-bright); }
+    .style-i .pill { background: rgba(0, 0, 0, 0.30); border: none; box-shadow: inset 0 0 0 1px rgba(226, 125, 96, 0.15); }
+    .style-i .avatar { color: var(--coral-bright); border-color: rgba(226, 125, 96, 0.35); background: linear-gradient(135deg, rgba(226, 125, 96, 0.30), rgba(245, 230, 211, 0.06)); }
+
     /* ===== Approval / footer ===== */
     .approval {
       margin-top: 80px;
@@ -457,8 +646,9 @@
       <div class="section-tag">FleetLine · Card Style Preview</div>
       <h1 class="hero-title">Pick your <span class="gold">card style</span></h1>
       <p class="hero-sub">
-        Same data, same color scheme — four different ways the cards can feel.
-        Hover each one. Notice the lift, the glow, the polish. Then tell me which letter to apply across the app.
+        Same data, same color scheme — nine different ways the cards can feel.
+        First four (A–D) keep the current amber palette. Last five (E–I) borrow Anthropic / Claude's design language: warm coral, cream highlights, generous padding, gentle shadows.
+        Hover each one. Then tell me which letter to apply across the app.
       </p>
     </header>
 
@@ -592,6 +782,136 @@
       </div>
     </div>
 
+    <!-- ===== E · CLAUDE PEBBLE ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option E · Claude design</div>
+      <h2 class="section-title">Claude <span class="accent">pebble</span></h2>
+      <p class="section-desc">Heavily rounded "pebble" shape, warm coral accents, almost no chrome. Lifts gently on hover. <em>Quiet, friendly, unmistakably Claude.</em></p>
+    </div>
+    <div class="card-grid claude-style style-e">
+      <div class="stat-card">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== F · CLAUDE WARM GLASS ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option F · Claude design</div>
+      <h2 class="section-title">Claude <span class="accent">warm glass</span></h2>
+      <p class="section-desc">Frosted translucent panels with a warm coral undertone instead of cold blue. Cream highlights on top. <em>Premium with a human warmth.</em></p>
+    </div>
+    <div class="card-grid claude-style style-f">
+      <div class="stat-card">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== G · CLAUDE SOFT GLOW ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option G · Claude design</div>
+      <h2 class="section-title">Claude <span class="accent">soft glow</span></h2>
+      <p class="section-desc">A coral spotlight tracks your cursor through the card — softer and wider than option D's amber flashlight. <em>Inviting, conversational.</em></p>
+    </div>
+    <div class="card-grid claude-style style-g" data-claude-glow>
+      <div class="stat-card claude-glow">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card claude-glow">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== H · CLAUDE BREATHE ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option H · Claude design</div>
+      <h2 class="section-title">Claude <span class="accent">breathe</span></h2>
+      <p class="section-desc">A continuous, slow gentle pulse — the card "breathes" while idle. Pause on hover. <em>Calm, alive, never demanding.</em></p>
+    </div>
+    <div class="card-grid claude-style style-h">
+      <div class="stat-card">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== I · CLAUDE PILLOW ===== -->
+    <div class="section-header">
+      <div class="section-tag">Option I · Claude design</div>
+      <h2 class="section-title">Claude <span class="accent">pillow</span></h2>
+      <p class="section-desc">No border at all. A pillow-soft, layered drop shadow does all the work. Largest radius, most padding. <em>The most "designed" of the set — like a printed brochure.</em></p>
+    </div>
+    <div class="card-grid claude-style style-i">
+      <div class="stat-card">
+        <div class="label">Today KM</div>
+        <div><span class="value">47</span><span class="unit">km</span></div>
+      </div>
+      <div class="rider-card">
+        <div class="top">
+          <div class="avatar">A</div>
+          <div>
+            <div class="name">Ali Raza</div>
+            <div class="meta">@ali · FDW-102</div>
+          </div>
+        </div>
+        <div class="pills">
+          <div class="pill"><div class="k">KM</div><div class="v">58</div></div>
+          <div class="pill"><div class="k">km/L</div><div class="v">35</div></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== APPROVAL ===== -->
     <section class="approval">
       <div class="section-tag" style="justify-content: center;">Pick one</div>
@@ -619,6 +939,26 @@
         <div class="legend-row">
           <div class="k">D · Glow Follow</div>
           <div class="v">Interactive / alive. Like Vercel's site.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">E · Claude Pebble</div>
+          <div class="v">Friendly, rounded, quiet. Coral accents.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">F · Claude Warm Glass</div>
+          <div class="v">Premium frosted glass with human warmth.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">G · Claude Soft Glow</div>
+          <div class="v">Coral spotlight tracks cursor. Inviting.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">H · Claude Breathe</div>
+          <div class="v">Idle gentle pulse. Calm, alive.</div>
+        </div>
+        <div class="legend-row">
+          <div class="k">I · Claude Pillow</div>
+          <div class="v">No border, soft layered shadow. Brochure-like.</div>
         </div>
       </div>
       <div class="footer-note">
@@ -681,6 +1021,26 @@
       if (!grid || reduce) return;
 
       const cards = grid.querySelectorAll('.glow');
+      cards.forEach((card) => {
+        card.addEventListener('mousemove', (e) => {
+          const rect = card.getBoundingClientRect();
+          const x = ((e.clientX - rect.left) / rect.width) * 100;
+          const y = ((e.clientY - rect.top) / rect.height) * 100;
+          card.style.setProperty('--mx', x + '%');
+          card.style.setProperty('--my', y + '%');
+        });
+      });
+    })();
+
+    // ============================================
+    // OPTION G · Claude soft glow (cursor track)
+    // ============================================
+    (() => {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const grid = document.querySelector('[data-claude-glow]');
+      if (!grid || reduce) return;
+
+      const cards = grid.querySelectorAll('.claude-glow');
       cards.forEach((card) => {
         card.addEventListener('mousemove', (e) => {
           const rect = card.getBoundingClientRect();
