@@ -840,25 +840,10 @@ const ThemeStyles = () => (
       inset: 0;
       z-index: -1;
       background:
-        radial-gradient(280px circle at var(--mx, 50%) var(--my, 50%), rgba(232, 155, 126, 0.20), rgba(226, 125, 96, 0.06) 32%, transparent 70%),
-        radial-gradient(circle at 20% 0%, rgba(217,119,6,0.14), transparent 34%),
-        radial-gradient(circle at 96% 8%, rgba(15,118,110,0.10), transparent 30%);
-      opacity: 0.85;
+        radial-gradient(circle at 20% 0%, rgba(217,119,6,0.18), transparent 34%),
+        radial-gradient(circle at 96% 8%, rgba(15,118,110,0.12), transparent 30%);
+      opacity: 0.9;
       pointer-events: none;
-      transition: filter 320ms ease, opacity 320ms ease;
-    }
-    @media (hover: hover) and (pointer: fine) {
-      .surface-3d:hover::before {
-        filter: brightness(1.35);
-        opacity: 1;
-      }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .surface-3d::before {
-        background:
-          radial-gradient(circle at 20% 0%, rgba(217,119,6,0.14), transparent 34%),
-          radial-gradient(circle at 96% 8%, rgba(15,118,110,0.10), transparent 30%);
-      }
     }
     .surface-3d::after {
       content: '';
@@ -4413,49 +4398,6 @@ export default function App() {
       if (timeout) window.clearTimeout(timeout);
     };
   }, [toast]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return undefined;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
-
-    let pendingCard = null;
-    let pendingX = 50;
-    let pendingY = 50;
-    let raf = null;
-    let lastCard = null;
-
-    const apply = () => {
-      raf = null;
-      if (!pendingCard) return;
-      pendingCard.style.setProperty('--mx', pendingX + '%');
-      pendingCard.style.setProperty('--my', pendingY + '%');
-    };
-
-    const handleMove = (event) => {
-      const card = event.target.closest && event.target.closest('.surface-3d');
-      if (!card) {
-        if (lastCard) {
-          lastCard.style.setProperty('--mx', '50%');
-          lastCard.style.setProperty('--my', '50%');
-          lastCard = null;
-        }
-        return;
-      }
-      const rect = card.getBoundingClientRect();
-      pendingX = ((event.clientX - rect.left) / rect.width) * 100;
-      pendingY = ((event.clientY - rect.top) / rect.height) * 100;
-      pendingCard = card;
-      lastCard = card;
-      if (!raf) raf = requestAnimationFrame(apply);
-    };
-
-    document.addEventListener('mousemove', handleMove, { passive: true });
-    return () => {
-      document.removeEventListener('mousemove', handleMove);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, []);
 
   useEffect(() => {
     let isMounted = true;
