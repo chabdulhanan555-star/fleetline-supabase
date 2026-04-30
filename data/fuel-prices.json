@@ -1,11 +1,11 @@
 {
   "success": true,
-  "petrol": 393.35,
-  "diesel": 380.19,
+  "petrol": 399.86,
+  "diesel": 399.58,
   "currency": "PKR",
-  "fetchedAt": "2026-04-30T10:29:44.868Z",
+  "fetchedAt": "2026-04-30T22:37:54.089Z",
   "source": "PSO",
   "sourceUrl": "https://www.psopk.com/",
   "error": null,
-  "lastSuccessfulFetch": "2026-04-30T10:29:44.868Z"
+  "lastSuccessfulFetch": "2026-04-30T22:37:54.089Z"
 }
