@@ -12,6 +12,13 @@ const ROUTE_SESSION_HISTORY_DAYS = 190;
 const ROUTE_SESSION_COLUMNS =
   'id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at';
 const ROUTE_POINT_COLUMNS = 'id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at';
+const SHOP_PIN_COLUMNS = 'id, route_session_id, employee_id, name, lat, lng, accuracy_m, pinned_at, created_at';
+const ROUTE_TEMPLATE_COLUMNS =
+  'id, employee_id, weekday, name, status, source_start_date, source_end_date, source_pin_count, duplicate_count, approved_by, approved_at, created_at, updated_at';
+const ROUTE_TEMPLATE_STOP_COLUMNS =
+  'id, template_id, stop_order, name, lat, lng, radius_m, visit_count, source_pin_ids, created_at';
+const ROUTE_DEVIATION_COLUMNS =
+  'id, route_session_id, template_id, employee_id, event_type, lat, lng, distance_m, radius_m, message, recorded_at, created_at';
 const hasPlaceholderText = (value) => {
   const text = String(value || '').trim().toLowerCase();
   return !text || text.includes('your-') || text.includes('your ') || text.includes('placeholder');
@@ -59,6 +66,9 @@ const demoListeners = {
   config: new Set(),
   routeSessions: new Set(),
   routePoints: new Set(),
+  shopPins: new Set(),
+  routeTemplates: new Set(),
+  routeDeviationEvents: new Set(),
   fuelPriceHistory: new Set(),
   dailyReviews: new Set(),
 };
@@ -181,6 +191,10 @@ function createDemoStore() {
     photos: {},
     routeSessions: [],
     routePoints: [],
+    shopPins: [],
+    routeTemplates: [],
+    routeTemplateStops: [],
+    routeDeviationEvents: [],
     fuelPriceHistory: [
       {
         date: todayIso(),
@@ -201,6 +215,10 @@ function readDemoStore() {
     const store = JSON.parse(raw);
     store.routeSessions ??= [];
     store.routePoints ??= [];
+    store.shopPins ??= [];
+    store.routeTemplates ??= [];
+    store.routeTemplateStops ??= [];
+    store.routeDeviationEvents ??= [];
     store.fuelPriceHistory ??= [];
     store.dailyReviews ??= [];
     return store;
@@ -276,6 +294,22 @@ function notifyDemoTable(table) {
     demoListeners.routePoints.forEach((listener) => listener([...store.routePoints]));
   }
 
+  if (table === 'shopPins') {
+    demoListeners.shopPins.forEach((listener) => listener([...store.shopPins]));
+  }
+
+  if (table === 'routeTemplates') {
+    const templates = store.routeTemplates.map((template) => ({
+      ...template,
+      stops: store.routeTemplateStops.filter((stop) => stop.templateId === template.id),
+    }));
+    demoListeners.routeTemplates.forEach((listener) => listener(templates));
+  }
+
+  if (table === 'routeDeviationEvents') {
+    demoListeners.routeDeviationEvents.forEach((listener) => listener([...store.routeDeviationEvents]));
+  }
+
   if (table === 'fuelPriceHistory') {
     demoListeners.fuelPriceHistory.forEach((listener) => listener([...store.fuelPriceHistory]));
   }
@@ -315,6 +349,21 @@ function demoSubscribe(table, callback) {
 
   if (table === 'routePoints') {
     callback([...store.routePoints]);
+  }
+
+  if (table === 'shopPins') {
+    callback([...store.shopPins]);
+  }
+
+  if (table === 'routeTemplates') {
+    callback(store.routeTemplates.map((template) => ({
+      ...template,
+      stops: store.routeTemplateStops.filter((stop) => stop.templateId === template.id),
+    })));
+  }
+
+  if (table === 'routeDeviationEvents') {
+    callback([...store.routeDeviationEvents]);
   }
 
   if (table === 'fuelPriceHistory') {
@@ -498,6 +547,71 @@ function mapRoutePoint(row) {
     accuracyM: row.accuracy_m === null ? null : Number(row.accuracy_m),
     speedMps: row.speed_mps === null ? null : Number(row.speed_mps),
     heading: row.heading === null ? null : Number(row.heading),
+    createdAt: row.created_at,
+  };
+}
+
+function mapShopPin(row) {
+  return {
+    id: row.id,
+    routeSessionId: row.route_session_id,
+    employeeId: row.employee_id,
+    name: row.name,
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    accuracyM: row.accuracy_m === null ? null : Number(row.accuracy_m),
+    pinnedAt: row.pinned_at,
+    createdAt: row.created_at,
+  };
+}
+
+function mapRouteTemplateStop(row) {
+  return {
+    id: row.id,
+    templateId: row.template_id,
+    stopOrder: row.stop_order,
+    name: row.name,
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    radiusM: row.radius_m,
+    visitCount: row.visit_count,
+    sourcePinIds: row.source_pin_ids ?? [],
+    createdAt: row.created_at,
+  };
+}
+
+function mapRouteTemplate(row, stops = []) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    weekday: row.weekday,
+    name: row.name,
+    status: row.status,
+    sourceStartDate: row.source_start_date,
+    sourceEndDate: row.source_end_date,
+    sourcePinCount: row.source_pin_count ?? 0,
+    duplicateCount: row.duplicate_count ?? 0,
+    approvedBy: row.approved_by,
+    approvedAt: row.approved_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    stops,
+  };
+}
+
+function mapRouteDeviation(row) {
+  return {
+    id: row.id,
+    routeSessionId: row.route_session_id,
+    templateId: row.template_id,
+    employeeId: row.employee_id,
+    eventType: row.event_type,
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    distanceM: row.distance_m ?? 0,
+    radiusM: row.radius_m ?? 0,
+    message: row.message ?? '',
+    recordedAt: row.recorded_at,
     createdAt: row.created_at,
   };
 }
@@ -859,6 +973,87 @@ export function subscribeRoutePoints(callback) {
   return subscribeIncrementalRoutePoints(callback);
 }
 
+export function subscribeShopPins(callback) {
+  if (isDemoMode) {
+    return demoSubscribe('shopPins', callback);
+  }
+
+  return subscribeTable({
+    table: 'shop_pins',
+    query: (client) =>
+      client
+        .from('shop_pins')
+        .select(SHOP_PIN_COLUMNS)
+        .order('pinned_at', { ascending: false })
+        .limit(1000),
+    callback: (rows) => callback((rows ?? []).map(mapShopPin)),
+  });
+}
+
+export function subscribeRouteTemplates(callback) {
+  if (isDemoMode) {
+    return demoSubscribe('routeTemplates', callback);
+  }
+
+  const loadTemplates = async (client) => {
+    const [{ data: templates, error: templatesError }, { data: stops, error: stopsError }] = await Promise.all([
+      client
+        .from('route_templates')
+        .select(ROUTE_TEMPLATE_COLUMNS)
+        .order('updated_at', { ascending: false }),
+      client
+        .from('route_template_stops')
+        .select(ROUTE_TEMPLATE_STOP_COLUMNS)
+        .order('stop_order', { ascending: true }),
+    ]);
+
+    return {
+      data: (templates ?? []).map((template) =>
+        mapRouteTemplate(
+          template,
+          (stops ?? [])
+            .filter((stop) => stop.template_id === template.id)
+            .map(mapRouteTemplateStop),
+        ),
+      ),
+      error: templatesError ?? stopsError,
+    };
+  };
+
+  const unsubscribeTemplates = subscribeTable({
+    table: 'route_templates',
+    query: loadTemplates,
+    callback,
+  });
+  const unsubscribeStops = subscribeTable({
+    table: 'route_template_stops',
+    query: loadTemplates,
+    callback,
+  });
+
+  return () => {
+    unsubscribeTemplates();
+    unsubscribeStops();
+  };
+}
+
+export function subscribeRouteDeviationEvents(callback) {
+  if (isDemoMode) {
+    return demoSubscribe('routeDeviationEvents', callback);
+  }
+
+  return subscribeTable({
+    table: 'route_deviation_events',
+    query: (client) =>
+      client
+        .from('route_deviation_events')
+        .select(ROUTE_DEVIATION_COLUMNS)
+        .order('recorded_at', { ascending: false })
+        .limit(250),
+    callback: (rows) => callback((rows ?? []).map(mapRouteDeviation)),
+  });
+}
+
 export async function listRoutePointsForSession(sessionId) {
   if (isDemoMode) {
     return readDemoStore()
@@ -881,12 +1076,128 @@ export async function listRoutePointsForSession(sessionId) {
   return (data ?? []).map(mapRoutePoint);
 }
 
+export async function saveRouteTemplate(template) {
+  const now = new Date().toISOString();
+  const stops = (template.stops ?? []).map((stop, index) => ({
+    stopOrder: index + 1,
+    name: stop.name || `Stop ${index + 1}`,
+    lat: Number(stop.lat),
+    lng: Number(stop.lng),
+    radiusM: Math.round(Number(stop.radiusM) || 100),
+    visitCount: Math.max(1, Math.round(Number(stop.visitCount) || 1)),
+    sourcePinIds: stop.sourcePinIds ?? [],
+  }));
+
+  if (isDemoMode) {
+    const store = readDemoStore();
+    store.routeTemplates = store.routeTemplates.map((row) =>
+      row.employeeId === template.employeeId && row.weekday === template.weekday && row.status === 'approved'
+        ? { ...row, status: 'archived', updatedAt: now }
+        : row,
+    );
+
+    const row = {
+      id: crypto.randomUUID(),
+      employeeId: template.employeeId,
+      weekday: template.weekday,
+      name: template.name,
+      status: template.status ?? 'approved',
+      sourceStartDate: template.sourceStartDate,
+      sourceEndDate: template.sourceEndDate,
+      sourcePinCount: template.sourcePinCount ?? 0,
+      duplicateCount: template.duplicateCount ?? 0,
+      approvedBy: demoSession?.role === 'admin' ? demoSession.user.id : null,
+      approvedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const stopRows = stops.map((stop) => ({
+      id: crypto.randomUUID(),
+      templateId: row.id,
+      stopOrder: stop.stopOrder,
+      name: stop.name,
+      lat: stop.lat,
+      lng: stop.lng,
+      radiusM: stop.radiusM,
+      visitCount: stop.visitCount,
+      sourcePinIds: stop.sourcePinIds,
+      createdAt: now,
+    }));
+
+    store.routeTemplates.unshift(row);
+    store.routeTemplateStops.push(...stopRows);
+    appendDemoAudit(store, 'route_template.approve', 'route_template', row.id, null, { ...row, stops: stopRows });
+    writeDemoStore(store);
+    notifyDemoTable('routeTemplates');
+    return { ...row, stops: stopRows };
+  }
+
+  const client = ensureAuthenticatedClient();
+  const archive = await client
+    .from('route_templates')
+    .update({ status: 'archived' })
+    .eq('employee_id', template.employeeId)
+    .eq('weekday', template.weekday)
+    .eq('status', 'approved');
+
+  if (archive.error) {
+    throw archive.error;
+  }
+
+  const { data, error } = await client
+    .from('route_templates')
+    .insert({
+      employee_id: template.employeeId,
+      weekday: template.weekday,
+      name: template.name,
+      status: template.status ?? 'approved',
+      source_start_date: template.sourceStartDate,
+      source_end_date: template.sourceEndDate,
+      source_pin_count: template.sourcePinCount ?? 0,
+      duplicate_count: template.duplicateCount ?? 0,
+      approved_at: now,
+    })
+    .select(ROUTE_TEMPLATE_COLUMNS)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  let stopRows = [];
+  if (stops.length) {
+    const { data: savedStops, error: stopsError } = await client
+      .from('route_template_stops')
+      .insert(stops.map((stop) => ({
+        template_id: data.id,
+        stop_order: stop.stopOrder,
+        name: stop.name,
+        lat: stop.lat,
+        lng: stop.lng,
+        radius_m: stop.radiusM,
+        visit_count: stop.visitCount,
+        source_pin_ids: stop.sourcePinIds,
+      })))
+      .select(ROUTE_TEMPLATE_STOP_COLUMNS);
+
+    if (stopsError) {
+      throw stopsError;
+    }
+
+    stopRows = (savedStops ?? []).map(mapRouteTemplateStop);
+  }
+
+  return mapRouteTemplate(data, stopRows);
+}
+
 export async function deleteRouteSession(sessionId) {
   if (isDemoMode) {
     const store = readDemoStore();
     const before = store.routeSessions.find((row) => row.id === sessionId);
     store.routeSessions = store.routeSessions.filter((row) => row.id !== sessionId);
     store.routePoints = store.routePoints.filter((row) => row.sessionId !== sessionId);
+    store.shopPins = store.shopPins.filter((row) => row.routeSessionId !== sessionId);
+    store.routeDeviationEvents = store.routeDeviationEvents.filter((row) => row.routeSessionId !== sessionId);
 
     appendDemoAudit(store, 'route.delete', 'route_session', sessionId, before ?? null, {
       deleted: true,
@@ -895,6 +1206,8 @@ export async function deleteRouteSession(sessionId) {
     writeDemoStore(store);
     notifyDemoTable('routeSessions');
     notifyDemoTable('routePoints');
+    notifyDemoTable('shopPins');
+    notifyDemoTable('routeDeviationEvents');
     return;
   }
 
@@ -1087,6 +1400,11 @@ export async function deleteEmployee(employeeId) {
     store.readings = store.readings.filter((row) => row.employeeId !== employeeId);
     store.routeSessions = store.routeSessions.filter((row) => row.employeeId !== employeeId);
     store.routePoints = store.routePoints.filter((row) => row.employeeId !== employeeId);
+    store.shopPins = store.shopPins.filter((row) => row.employeeId !== employeeId);
+    store.routeDeviationEvents = store.routeDeviationEvents.filter((row) => row.employeeId !== employeeId);
+    const removedTemplateIds = new Set(store.routeTemplates.filter((row) => row.employeeId === employeeId).map((row) => row.id));
+    store.routeTemplates = store.routeTemplates.filter((row) => row.employeeId !== employeeId);
+    store.routeTemplateStops = store.routeTemplateStops.filter((row) => !removedTemplateIds.has(row.templateId));
     Object.keys(store.photos).forEach((path) => {
       if (path.includes(`/${employeeId}/`)) {
         delete store.photos[path];
@@ -1098,6 +1416,9 @@ export async function deleteEmployee(employeeId) {
     notifyDemoTable('readings');
     notifyDemoTable('routeSessions');
     notifyDemoTable('routePoints');
+    notifyDemoTable('shopPins');
+    notifyDemoTable('routeDeviationEvents');
+    notifyDemoTable('routeTemplates');
     return;
   }
 
