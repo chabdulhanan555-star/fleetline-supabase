@@ -238,6 +238,7 @@ const fmtDistance = (meters) => {
   const value = Number(meters) || 0;
   return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${Math.round(value)} m`;
 };
+const fmtCoordinate = (value) => (Number.isFinite(Number(value)) ? Number(value).toFixed(6) : '-');
 
 const readStoredActiveRoute = () => {
   if (typeof window === 'undefined') return null;
@@ -1824,6 +1825,7 @@ const RouteMap = ({ points, session, employee }) => {
       {lastPoint ? (
         <div className="pointer-events-none absolute bottom-3 left-3 right-3 mini-surface-3d border border-zinc-700 bg-black/85 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400">
           Last GPS: {fmtTime(lastPoint.recordedAt)}
+          {` | Lat ${fmtCoordinate(lastPoint.lat)} | Lng ${fmtCoordinate(lastPoint.lng)}`}
           {lastPoint.accuracyM ? ` | Accuracy ${Math.round(lastPoint.accuracyM)}m` : ''}
         </div>
       ) : null}
@@ -1868,6 +1870,190 @@ const RouteSessionCard = ({ session, employee, points, selected, deleting, onSel
           {deleting ? 'DELETING' : 'DELETE'}
         </button>
       </div>
+    </div>
+  );
+};
+
+const LiveRiderMap = ({ employees, routeSessions, routePoints, onLoadRoutePoints, onSelectEmployee }) => {
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
+  const todayRoutes = useMemo(
+    () =>
+      routeSessions
+        .filter((session) => session.date === today() && ['active', 'completed'].includes(session.status))
+        .sort((left, right) => {
+          const leftActive = left.status === 'active' ? 1 : 0;
+          const rightActive = right.status === 'active' ? 1 : 0;
+          if (leftActive !== rightActive) return rightActive - leftActive;
+          const leftTime = new Date(left.lastPointAt || left.startedAt || left.createdAt || 0).getTime();
+          const rightTime = new Date(right.lastPointAt || right.startedAt || right.createdAt || 0).getTime();
+          return rightTime - leftTime;
+        }),
+    [routeSessions],
+  );
+  const activeRoutes = todayRoutes.filter((session) => session.status === 'active');
+  const todayRouteKey = todayRoutes.map((session) => session.id).join('|');
+  const activeRouteLoadKey = activeRoutes
+    .map((session) => `${session.id}:${session.pointCount}:${session.lastPointAt || ''}:${pointsBySession[session.id]?.length ?? 0}`)
+    .join('|');
+  const selectedSession = todayRoutes.find((session) => session.id === selectedSessionId) ?? todayRoutes[0] ?? null;
+  const selectedEmployee = selectedSession
+    ? employees.find((employee) => employee.id === selectedSession.employeeId)
+    : null;
+  const selectedPoints = selectedSession ? pointsBySession[selectedSession.id] || [] : [];
+  const sortedSelectedPoints = useMemo(() => sortRoutePoints(selectedPoints), [selectedPoints]);
+  const lastPoint = sortedSelectedPoints.at(-1);
+  const selectedPointCount = selectedSession?.pointCount || selectedPoints.length || 0;
+  const stale =
+    selectedSession?.status === 'active' &&
+    (!selectedSession.lastPointAt || Date.now() - new Date(selectedSession.lastPointAt).getTime() > ROUTE_STALE_AFTER_MS);
+
+  useEffect(() => {
+    if (!todayRoutes.length) {
+      if (selectedSessionId) setSelectedSessionId(null);
+      return;
+    }
+
+    if (!selectedSessionId || !todayRoutes.some((session) => session.id === selectedSessionId)) {
+      setSelectedSessionId(todayRoutes[0].id);
+    }
+  }, [selectedSessionId, todayRouteKey]);
+
+  useEffect(() => {
+    if (!onLoadRoutePoints) return;
+
+    activeRoutes
+      .filter((session) => (session.pointCount ?? 0) > (pointsBySession[session.id]?.length ?? 0))
+      .slice(0, 6)
+      .forEach((session) => onLoadRoutePoints(session.id));
+
+    if (
+      selectedSession &&
+      (selectedSession.pointCount ?? 0) > (pointsBySession[selectedSession.id]?.length ?? 0)
+    ) {
+      onLoadRoutePoints(selectedSession.id);
+    }
+  }, [activeRouteLoadKey, onLoadRoutePoints, selectedSession?.id, selectedSession?.pointCount]);
+
+  return (
+    <div className="surface-3d border border-green-500/25 bg-zinc-950/95 p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-green-300/80">// Live Rider GPS</div>
+          <div className="font-display text-3xl leading-none text-white">Live Rider Map</div>
+          <div className="mt-1 text-xs text-zinc-500">
+            Shows the rider route from Start Market until End Market, with the latest coordinates.
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <div className="ops-metric-pill min-w-[84px] border border-green-400/20 px-3 py-2 text-right">
+            <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">active</div>
+            <div className="font-display text-2xl leading-none text-green-300">{activeRoutes.length}</div>
+          </div>
+          <div className="ops-metric-pill min-w-[84px] border border-amber-400/20 px-3 py-2 text-right">
+            <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">today</div>
+            <div className="font-display text-2xl leading-none text-amber-300">{todayRoutes.length}</div>
+          </div>
+        </div>
+      </div>
+
+      {todayRoutes.length === 0 ? (
+        <div className="empty-state p-8 text-center">
+          <MapPin className="empty-icon mx-auto mb-3 h-10 w-10 text-orange-500/80" />
+          <div className="font-display text-2xl text-white">No Rider GPS Yet</div>
+          <div className="mt-1 text-sm text-zinc-500">
+            Ask a rider to login, press Start Market, and allow location. GPS points appear here after sync.
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <RouteMap session={selectedSession} employee={selectedEmployee} points={selectedPoints} />
+
+          <div className="space-y-3">
+            <div className={`mini-surface-3d border p-3 ${stale ? 'border-amber-400/30 bg-amber-500/10' : 'border-green-400/25 bg-black/45'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => selectedEmployee && onSelectEmployee?.(selectedEmployee.id)}
+                  className="min-w-0 text-left"
+                >
+                  <div className="truncate font-display text-2xl leading-none text-white">
+                    {selectedEmployee?.name || 'Unknown rider'}
+                  </div>
+                  <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                    {selectedEmployee?.bikePlate || 'No plate'} | {selectedSession.status}
+                  </div>
+                </button>
+                <div className={`h-2.5 w-2.5 rounded-full ${selectedSession.status === 'active' && !stale ? 'bg-green-400 pulse-dot' : stale ? 'bg-amber-400' : 'bg-zinc-500'}`} />
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="border border-zinc-800 bg-black/50 p-2">
+                  <div className="font-mono text-[8px] uppercase text-zinc-500">Latitude</div>
+                  <div className="font-mono text-xs text-white">{fmtCoordinate(lastPoint?.lat)}</div>
+                </div>
+                <div className="border border-zinc-800 bg-black/50 p-2">
+                  <div className="font-mono text-[8px] uppercase text-zinc-500">Longitude</div>
+                  <div className="font-mono text-xs text-white">{fmtCoordinate(lastPoint?.lng)}</div>
+                </div>
+                <div className="border border-zinc-800 bg-black/50 p-2">
+                  <div className="font-mono text-[8px] uppercase text-zinc-500">Last Fix</div>
+                  <div className="font-mono text-xs text-white">{fmtTime(lastPoint?.recordedAt || selectedSession.lastPointAt)}</div>
+                </div>
+                <div className="border border-zinc-800 bg-black/50 p-2">
+                  <div className="font-mono text-[8px] uppercase text-zinc-500">Points</div>
+                  <div className="font-mono text-xs text-white">{selectedPointCount}</div>
+                </div>
+              </div>
+
+              {stale ? (
+                <div className="mt-3 border border-amber-400/25 bg-amber-500/10 p-2 font-mono text-[9px] uppercase leading-4 text-amber-200">
+                  No recent GPS point. Rider phone may be offline, app closed, or permission blocked.
+                </div>
+              ) : null}
+            </div>
+
+            <div>
+              <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-amber-500/70">Today Riders</div>
+              <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                {todayRoutes.map((session) => {
+                  const employee = employees.find((row) => row.id === session.employeeId);
+                  const points = pointsBySession[session.id] || [];
+                  const routeLastPoint = sortRoutePoints(points).at(-1);
+                  const isSelected = selectedSession?.id === session.id;
+                  const isStale =
+                    session.status === 'active' &&
+                    (!session.lastPointAt || Date.now() - new Date(session.lastPointAt).getTime() > ROUTE_STALE_AFTER_MS);
+
+                  return (
+                    <button
+                      key={session.id}
+                      type="button"
+                      onClick={() => setSelectedSessionId(session.id)}
+                      className={`mini-surface-3d w-full border p-3 text-left transition-colors ${
+                        isSelected ? 'border-orange-500 bg-orange-500/10' : 'border-zinc-800 bg-black/40 hover:border-orange-500/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-white">{employee?.name || 'Unknown rider'}</div>
+                          <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
+                            {fmtTime(routeLastPoint?.recordedAt || session.lastPointAt || session.startedAt)} | {session.status}
+                          </div>
+                        </div>
+                        <div className={`mt-1 h-2 w-2 rounded-full ${session.status === 'active' && !isStale ? 'bg-green-400 pulse-dot' : isStale ? 'bg-amber-400' : 'bg-zinc-500'}`} />
+                      </div>
+                      <div className="mt-2 font-mono text-[9px] uppercase text-zinc-500">
+                        {fmtCoordinate(routeLastPoint?.lat)}, {fmtCoordinate(routeLastPoint?.lng)} | {session.pointCount || points.length} pts
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2570,6 +2756,7 @@ const AdminOverview = ({
   fuelPriceHistory,
   dailyReviews,
   onSelectEmployee,
+  onLoadRoutePoints,
 }) => {
   const [now, setNow] = useState(() => new Date());
   const thisMonth = monthKey(today());
@@ -2720,6 +2907,14 @@ const AdminOverview = ({
         <StatCard label="Monthly KM" value={fmtNum(Math.round(stats.totalKm))} unit="km" icon={TrendingUp} accent="orange" />
         <StatCard label="Fuel Used" value={stats.totalFuel.toFixed(1)} unit="litres" icon={Fuel} accent="gold" />
       </div>
+
+      <LiveRiderMap
+        employees={employees}
+        routeSessions={routeSessions}
+        routePoints={routePoints}
+        onLoadRoutePoints={onLoadRoutePoints}
+        onSelectEmployee={onSelectEmployee}
+      />
 
       <div className="grid grid-cols-2 gap-2">
         <div className="surface-3d border border-zinc-800 bg-zinc-950 p-4">
@@ -5892,6 +6087,7 @@ export default function App() {
                 fuelPriceHistory={fuelPriceHistory}
                 dailyReviews={dailyReviews}
                 onSelectEmployee={setSelectedEmployeeId}
+                onLoadRoutePoints={loadRoutePointsForSession}
               />
             ) : null}
             {adminTab === 'employees' ? (
