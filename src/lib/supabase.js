@@ -34,6 +34,11 @@ const hasValidSupabaseUrl =
   /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(normalizedSupabaseUrl) ||
   /^https:\/\/[a-z0-9-]+\.supabase\.in$/.test(normalizedSupabaseUrl);
 const hasValidAnonKey = normalizedSupabaseAnonKey.startsWith('eyJ') && !hasPlaceholderText(normalizedSupabaseAnonKey);
+const isDuplicateError = (error) => error?.code === '23505';
+const isStorageDuplicateError = (error) => {
+  const message = String(error?.message ?? '').toLowerCase();
+  return error?.status === 409 || error?.statusCode === 409 || message.includes('already exists') || message.includes('duplicate');
+};
 
 export const supabaseConfigError = !normalizedSupabaseUrl
   ? 'Missing VITE_SUPABASE_URL.'
@@ -1516,7 +1521,7 @@ export async function uploadPhoto(employeeId, readingId, file) {
     upsert: false,
   });
 
-  if (error) {
+  if (error && !isStorageDuplicateError(error)) {
     throw error;
   }
 
@@ -1559,6 +1564,27 @@ export async function saveReading(reading) {
     .insert(payload)
     .select('id, employee_id, date, km, reading_type, photo_path, submitted_at, submitted_by')
     .single();
+
+  if (error && isDuplicateError(error)) {
+    const { data: updated, error: updateError } = await client
+      .from('readings')
+      .update({
+        km: payload.km,
+        reading_type: payload.reading_type,
+        photo_path: payload.photo_path,
+        submitted_at: payload.submitted_at,
+      })
+      .eq('id', payload.id)
+      .eq('employee_id', payload.employee_id)
+      .select('id, employee_id, date, km, reading_type, photo_path, submitted_at, submitted_by')
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    return mapReading(updated);
+  }
 
   if (error) {
     throw error;
