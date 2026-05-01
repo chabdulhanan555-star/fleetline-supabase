@@ -451,6 +451,39 @@ const getRouteForDay = (routeSessions = [], employeeId, date) =>
     .filter((session) => session.employeeId === employeeId && session.date === date)
     .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime())[0] ?? null;
 
+const getLatestPointFromSession = (session) => {
+  if (!session || !Number.isFinite(Number(session.latestLat)) || !Number.isFinite(Number(session.latestLng))) {
+    return null;
+  }
+
+  return {
+    id: `live-${session.id}-${session.lastPointAt || session.updatedAt || session.startedAt}`,
+    sessionId: session.id,
+    employeeId: session.employeeId,
+    recordedAt: session.lastPointAt || session.updatedAt || session.startedAt,
+    lat: Number(session.latestLat),
+    lng: Number(session.latestLng),
+    accuracyM: session.latestAccuracyM,
+    speedMps: session.latestSpeedMps,
+    heading: session.latestHeading,
+    createdAt: session.updatedAt || session.lastPointAt || session.startedAt,
+  };
+};
+
+const mergeSessionLatestPoint = (points = [], session) => {
+  const sorted = sortRoutePoints(points);
+  const latest = getLatestPointFromSession(session);
+
+  if (!latest) return sorted;
+
+  const currentLast = sorted.at(-1);
+  if (!currentLast || new Date(latest.recordedAt).getTime() > new Date(currentLast.recordedAt).getTime()) {
+    return [...sorted, latest];
+  }
+
+  return sorted;
+};
+
 const getShopPinsForRouteDay = (shopPins = [], employeeId, date, routeSessionId) =>
   shopPins
     .filter((pin) =>
@@ -1901,7 +1934,10 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, onLoadRoutePoints
     ? employees.find((employee) => employee.id === selectedSession.employeeId)
     : null;
   const selectedPoints = selectedSession ? pointsBySession[selectedSession.id] || [] : [];
-  const sortedSelectedPoints = useMemo(() => sortRoutePoints(selectedPoints), [selectedPoints]);
+  const sortedSelectedPoints = useMemo(
+    () => mergeSessionLatestPoint(selectedPoints, selectedSession),
+    [selectedPoints, selectedSession],
+  );
   const lastPoint = sortedSelectedPoints.at(-1);
   const selectedPointCount = selectedSession?.pointCount || selectedPoints.length || 0;
   const stale =
@@ -1967,7 +2003,7 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, onLoadRoutePoints
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <RouteMap session={selectedSession} employee={selectedEmployee} points={selectedPoints} />
+          <RouteMap session={selectedSession} employee={selectedEmployee} points={sortedSelectedPoints} />
 
           <div className="space-y-3">
             <div className={`mini-surface-3d border p-3 ${stale ? 'border-amber-400/30 bg-amber-500/10' : 'border-green-400/25 bg-black/45'}`}>
@@ -2019,7 +2055,7 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, onLoadRoutePoints
                 {todayRoutes.map((session) => {
                   const employee = employees.find((row) => row.id === session.employeeId);
                   const points = pointsBySession[session.id] || [];
-                  const routeLastPoint = sortRoutePoints(points).at(-1);
+                  const routeLastPoint = mergeSessionLatestPoint(points, session).at(-1);
                   const isSelected = selectedSession?.id === session.id;
                   const isStale =
                     session.status === 'active' &&
@@ -3556,6 +3592,10 @@ const AdminRoutesPanel = ({
     ? employees.find((employee) => employee.id === selectedSession.employeeId)
     : null;
   const selectedPoints = selectedSession ? pointsBySession[selectedSession.id] || [] : [];
+  const selectedDisplayPoints = useMemo(
+    () => mergeSessionLatestPoint(selectedPoints, selectedSession),
+    [selectedPoints, selectedSession],
+  );
   const selectedPins = selectedSession
     ? getShopPinsForRouteDay(shopPins, selectedSession.employeeId, selectedSession.date, selectedSession.id)
     : [];
@@ -3649,7 +3689,7 @@ const AdminRoutesPanel = ({
           <RouteMap
             session={selectedSession}
             employee={selectedEmployee}
-            points={selectedPoints}
+            points={selectedDisplayPoints}
           />
           <ShopPinProofPanel pins={selectedPins} onPreviewPhoto={onPreviewPhoto} />
         </>
@@ -3671,7 +3711,7 @@ const AdminRoutesPanel = ({
           <div className="space-y-2">
             {rows.slice(0, 30).map((session) => {
               const employee = employees.find((row) => row.id === session.employeeId);
-              const points = pointsBySession[session.id] || [];
+              const points = mergeSessionLatestPoint(pointsBySession[session.id] || [], session);
               return (
                 <RouteSessionCard
                   key={session.id}

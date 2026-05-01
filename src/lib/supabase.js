@@ -10,7 +10,7 @@ const DEMO_STORE_KEY = 'fleetline.demo-store.v1';
 const DEMO_SESSION_KEY = 'fleetline.demo-session.v1';
 const ROUTE_SESSION_HISTORY_DAYS = 190;
 const ROUTE_SESSION_COLUMNS =
-  'id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at';
+  'id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, latest_lat, latest_lng, latest_accuracy_m, latest_speed_mps, latest_heading, point_count, total_distance_m, created_by, created_at, updated_at';
 const ROUTE_POINT_COLUMNS = 'id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at';
 const SHOP_PIN_COLUMNS = 'id, route_session_id, employee_id, name, lat, lng, accuracy_m, pinned_at, photo_path, created_at';
 const LEGACY_SHOP_PIN_COLUMNS = 'id, route_session_id, employee_id, name, lat, lng, accuracy_m, pinned_at, created_at';
@@ -529,6 +529,11 @@ function mapRouteSession(row) {
     startedAt: row.started_at,
     endedAt: row.ended_at,
     lastPointAt: row.last_point_at,
+    latestLat: row.latest_lat === null || row.latest_lat === undefined ? null : Number(row.latest_lat),
+    latestLng: row.latest_lng === null || row.latest_lng === undefined ? null : Number(row.latest_lng),
+    latestAccuracyM: row.latest_accuracy_m === null || row.latest_accuracy_m === undefined ? null : Number(row.latest_accuracy_m),
+    latestSpeedMps: row.latest_speed_mps === null || row.latest_speed_mps === undefined ? null : Number(row.latest_speed_mps),
+    latestHeading: row.latest_heading === null || row.latest_heading === undefined ? null : Number(row.latest_heading),
     pointCount: row.point_count ?? 0,
     totalDistanceM: row.total_distance_m ?? 0,
     createdBy: row.created_by,
