@@ -144,6 +144,7 @@ const ROUTE_RENDER_MARKER_LIMIT = 110;
 const ROUTE_REFIT_POINT_DELTA = 18;
 const ROUTE_MAP_FALLBACK_CENTER = [74.3587, 31.5204];
 const ROUTE_POINTS_MEMORY_LIMIT = 5000;
+const ROUTE_MAP_LOAD_TIMEOUT_MS = 6500;
 const ROUTE_MAP_STYLE = {
   version: 8,
   sources: {
@@ -1724,8 +1725,11 @@ const RouteMap = ({ points, session, employee }) => {
   const lastPointKey = lastPoint
     ? `${lastPoint.recordedAt}:${Number(lastPoint.lat).toFixed(7)}:${Number(lastPoint.lng).toFixed(7)}`
     : '';
+  const roadMatchBucket = Math.floor(cleanRoutePoints.length / 20);
   const roadMatchKey = cleanRoutePoints.length
-    ? `${session?.id ?? 'route'}:${cleanRoutePoints.length}:${cleanRoutePoints.at(-1)?.recordedAt}:${Number(cleanRoutePoints.at(-1)?.lat).toFixed(7)}:${Number(cleanRoutePoints.at(-1)?.lng).toFixed(7)}`
+    ? session?.status === 'active'
+      ? `${session?.id ?? 'route'}:active:${roadMatchBucket}`
+      : `${session?.id ?? 'route'}:${session?.status ?? 'route'}:${cleanRoutePoints.length}:${cleanRoutePoints.at(-1)?.recordedAt}:${Number(cleanRoutePoints.at(-1)?.lat).toFixed(7)}:${Number(cleanRoutePoints.at(-1)?.lng).toFixed(7)}`
     : '';
 
   useEffect(() => {
@@ -1775,8 +1779,16 @@ const RouteMap = ({ points, session, employee }) => {
 
     const initMap = async () => {
       try {
+        const timeout = window.setTimeout(() => {
+          if (!cancelled) {
+            setMapStatus('error');
+          }
+        }, ROUTE_MAP_LOAD_TIMEOUT_MS);
         const maplibre = await loadMaplibre();
-        if (cancelled || !containerRef.current) return;
+        if (cancelled || !containerRef.current) {
+          window.clearTimeout(timeout);
+          return;
+        }
 
         maplibreRef.current = maplibre;
         const initialPoint = displayRoutePoints[0];
@@ -1791,6 +1803,7 @@ const RouteMap = ({ points, session, employee }) => {
           fadeDuration: 0,
           refreshExpiredTiles: false,
           renderWorldCopies: false,
+          interactive: false,
           dragRotate: false,
           pitchWithRotate: false,
           canvasContextAttributes: {
@@ -1802,8 +1815,9 @@ const RouteMap = ({ points, session, employee }) => {
         mapRef.current = map;
         map.addControl(new maplibre.AttributionControl({ compact: true }), 'bottom-right');
 
-        map.on('load', () => {
+        map.once('load', () => {
           if (cancelled) return;
+          window.clearTimeout(timeout);
 
           map.addSource('route-line', {
             type: 'geojson',
@@ -1852,6 +1866,8 @@ const RouteMap = ({ points, session, employee }) => {
 
         map.on('error', (event) => {
           console.warn('[route-map] map error', event?.error || event);
+          window.clearTimeout(timeout);
+          if (!cancelled) setMapStatus('error');
         });
       } catch (error) {
         console.error(error);

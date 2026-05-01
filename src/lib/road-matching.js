@@ -7,7 +7,9 @@ const MAPBOX_TOKEN =
 const OSRM_MATCH_URL =
   import.meta.env.VITE_OSRM_MATCH_URL ||
   'https://router.project-osrm.org/match/v1/driving';
+const ENABLE_OSRM_DEMO_MATCHING = String(import.meta.env.VITE_ENABLE_OSRM_DEMO_MATCHING || '').toLowerCase() === 'true';
 const MAX_MATCH_POINTS = 90;
+const MAX_MATCHED_GEOMETRY_POINTS = 650;
 
 const hasUsableToken = (value) => {
   const text = String(value || '').trim().toLowerCase();
@@ -89,7 +91,7 @@ async function requestOsrmMatch(points, signal) {
 }
 
 export async function matchRouteToRoad(points = [], options = {}) {
-  const sourcePoints = thinRoutePoints(filterNoisyRoutePoints(points), options.maxPoints ?? 450);
+  const sourcePoints = thinRoutePoints(filterNoisyRoutePoints(points), options.maxPoints ?? MAX_MATCH_POINTS);
   if (sourcePoints.length < 3) {
     return {
       provider: 'raw',
@@ -98,7 +100,15 @@ export async function matchRouteToRoad(points = [], options = {}) {
     };
   }
 
-  const provider = hasUsableToken(MAPBOX_TOKEN) ? 'mapbox' : 'osrm-demo';
+  const provider = hasUsableToken(MAPBOX_TOKEN) ? 'mapbox' : ENABLE_OSRM_DEMO_MATCHING ? 'osrm-demo' : 'raw';
+  if (provider === 'raw') {
+    return {
+      provider: 'raw',
+      points: sourcePoints,
+      message: 'Raw GPS display. Configure Mapbox for production road matching.',
+    };
+  }
+
   const matched = [];
   const chunks = chunkPoints(sourcePoints, MAX_MATCH_POINTS);
 
@@ -129,7 +139,7 @@ export async function matchRouteToRoad(points = [], options = {}) {
 
   return {
     provider,
-    points: matched,
+    points: thinRoutePoints(matched, MAX_MATCHED_GEOMETRY_POINTS),
     message: provider === 'mapbox'
       ? 'Road matched with Mapbox.'
       : 'Road matched with the OSRM demo service. Use Mapbox or self-host OSRM/Valhalla for production.',
