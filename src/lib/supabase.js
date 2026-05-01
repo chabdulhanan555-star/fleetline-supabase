@@ -12,6 +12,8 @@ const ROUTE_SESSION_HISTORY_DAYS = 190;
 const ROUTE_SESSION_COLUMNS =
   'id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, latest_lat, latest_lng, latest_accuracy_m, latest_speed_mps, latest_heading, point_count, total_distance_m, created_by, created_at, updated_at';
 const ROUTE_POINT_COLUMNS = 'id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at';
+const LIVE_RIDER_LOCATION_COLUMNS =
+  'employee_id, route_session_id, date, status, lat, lng, accuracy_m, speed_mps, heading, recorded_at, updated_at';
 const SHOP_PIN_COLUMNS = 'id, route_session_id, employee_id, name, lat, lng, accuracy_m, pinned_at, photo_path, created_at';
 const LEGACY_SHOP_PIN_COLUMNS = 'id, route_session_id, employee_id, name, lat, lng, accuracy_m, pinned_at, created_at';
 const ROUTE_TEMPLATE_COLUMNS =
@@ -557,6 +559,22 @@ function mapRoutePoint(row) {
   };
 }
 
+function mapLiveRiderLocation(row) {
+  return {
+    employeeId: row.employee_id,
+    routeSessionId: row.route_session_id,
+    date: row.date,
+    status: row.status,
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    accuracyM: row.accuracy_m === null ? null : Number(row.accuracy_m),
+    speedMps: row.speed_mps === null ? null : Number(row.speed_mps),
+    heading: row.heading === null ? null : Number(row.heading),
+    recordedAt: row.recorded_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapShopPin(row) {
   return {
     id: row.id,
@@ -978,6 +996,23 @@ export function subscribeRoutePoints(callback) {
   }
 
   return subscribeIncrementalRoutePoints(callback);
+}
+
+export function subscribeLiveRiderLocations(callback) {
+  if (isDemoMode) {
+    callback([]);
+    return () => undefined;
+  }
+
+  return subscribeTable({
+    table: 'live_rider_locations',
+    query: (client) =>
+      client
+        .from('live_rider_locations')
+        .select(LIVE_RIDER_LOCATION_COLUMNS)
+        .order('updated_at', { ascending: false }),
+    callback: (rows) => callback((rows ?? []).map(mapLiveRiderLocation)),
+  });
 }
 
 async function loadShopPinsWithOptionalPhoto(client) {

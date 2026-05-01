@@ -74,6 +74,7 @@ import {
   subscribeDailyReviews,
   subscribeEmployees,
   subscribeFuelPriceHistory,
+  subscribeLiveRiderLocations,
   subscribeReadings,
   subscribeRouteDeviationEvents,
   subscribeRoutePoints,
@@ -451,7 +452,40 @@ const getRouteForDay = (routeSessions = [], employeeId, date) =>
     .filter((session) => session.employeeId === employeeId && session.date === date)
     .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime())[0] ?? null;
 
-const getLatestPointFromSession = (session) => {
+const getLiveLocationForSession = (liveLocations = [], session) => {
+  if (!session) return null;
+
+  return liveLocations.find((location) => location.routeSessionId === session.id) ??
+    liveLocations.find(
+      (location) =>
+        location.employeeId === session.employeeId &&
+        location.date === session.date &&
+        (location.status === 'active' || session.status === 'active'),
+    ) ??
+    null;
+};
+
+const getLatestPointFromSession = (session, liveLocation = null) => {
+  if (
+    liveLocation &&
+    Number.isFinite(Number(liveLocation.lat)) &&
+    Number.isFinite(Number(liveLocation.lng)) &&
+    (liveLocation.status === 'active' || session?.status === 'active')
+  ) {
+    return {
+      id: `live-${liveLocation.employeeId}-${liveLocation.recordedAt || liveLocation.updatedAt}`,
+      sessionId: session?.id ?? liveLocation.routeSessionId ?? liveLocation.employeeId,
+      employeeId: liveLocation.employeeId,
+      recordedAt: liveLocation.recordedAt || liveLocation.updatedAt,
+      lat: Number(liveLocation.lat),
+      lng: Number(liveLocation.lng),
+      accuracyM: liveLocation.accuracyM,
+      speedMps: liveLocation.speedMps,
+      heading: liveLocation.heading,
+      createdAt: liveLocation.updatedAt || liveLocation.recordedAt,
+    };
+  }
+
   if (!session || !Number.isFinite(Number(session.latestLat)) || !Number.isFinite(Number(session.latestLng))) {
     return null;
   }
@@ -470,9 +504,9 @@ const getLatestPointFromSession = (session) => {
   };
 };
 
-const mergeSessionLatestPoint = (points = [], session) => {
+const mergeSessionLatestPoint = (points = [], session, liveLocation = null) => {
   const sorted = sortRoutePoints(points);
-  const latest = getLatestPointFromSession(session);
+  const latest = getLatestPointFromSession(session, liveLocation);
 
   if (!latest) return sorted;
 
@@ -1669,12 +1703,15 @@ const RouteMap = ({ points, session, employee }) => {
   const mapRef = useRef(null);
   const maplibreRef = useRef(null);
   const updateFrameRef = useRef(null);
-  const fittedRouteRef = useRef({ sessionId: null, pointCount: 0 });
+  const fittedRouteRef = useRef({ sessionId: null, pointCount: 0, lastPointKey: '' });
   const [mapStatus, setMapStatus] = useState('loading');
   const routePoints = useMemo(() => sortRoutePoints(points), [points]);
   const routeDistance = session?.totalDistanceM || calculateRouteDistanceM(routePoints);
   const visiblePointCount = routePoints.length || session?.pointCount || 0;
   const lastPoint = routePoints.at(-1);
+  const lastPointKey = lastPoint
+    ? `${lastPoint.recordedAt}:${Number(lastPoint.lat).toFixed(7)}:${Number(lastPoint.lng).toFixed(7)}`
+    : '';
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return undefined;
@@ -1754,7 +1791,7 @@ const RouteMap = ({ points, session, employee }) => {
             },
           });
           updateRouteMapData(map, routePoints, maplibre, { fit: true });
-          fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: routePoints.length };
+          fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: routePoints.length, lastPointKey };
           setMapStatus('ready');
         });
 
@@ -1793,11 +1830,12 @@ const RouteMap = ({ points, session, employee }) => {
       const previous = fittedRouteRef.current;
       const sameSession = previous.sessionId === (session?.id ?? null);
       const pointDelta = Math.abs(routePoints.length - previous.pointCount);
+      const latestChanged = lastPointKey && lastPointKey !== previous.lastPointKey;
       const shouldFit = !sameSession || previous.pointCount === 0 || pointDelta >= ROUTE_REFIT_POINT_DELTA;
-      const shouldFollow = sameSession && session?.status === 'active' && pointDelta > 0;
+      const shouldFollow = sameSession && session?.status === 'active' && latestChanged;
 
       updateRouteMapData(map, routePoints, maplibre, { fit: shouldFit, follow: shouldFollow });
-      fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: routePoints.length };
+      fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: routePoints.length, lastPointKey };
     });
 
     return () => {
@@ -1805,7 +1843,7 @@ const RouteMap = ({ points, session, employee }) => {
         window.cancelAnimationFrame(updateFrameRef.current);
       }
     };
-  }, [routePoints, session?.id, session?.status]);
+  }, [lastPointKey, routePoints, session?.id, session?.status]);
 
   return (
     <div className="route-map-3d surface-3d relative overflow-hidden border border-orange-500/30 bg-zinc-950">
@@ -1907,7 +1945,7 @@ const RouteSessionCard = ({ session, employee, points, selected, deleting, onSel
   );
 };
 
-const LiveRiderMap = ({ employees, routeSessions, routePoints, onLoadRoutePoints, onSelectEmployee }) => {
+const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocations = [], onLoadRoutePoints, onSelectEmployee }) => {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
   const todayRoutes = useMemo(
@@ -1934,15 +1972,16 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, onLoadRoutePoints
     ? employees.find((employee) => employee.id === selectedSession.employeeId)
     : null;
   const selectedPoints = selectedSession ? pointsBySession[selectedSession.id] || [] : [];
+  const selectedLiveLocation = getLiveLocationForSession(liveRiderLocations, selectedSession);
   const sortedSelectedPoints = useMemo(
-    () => mergeSessionLatestPoint(selectedPoints, selectedSession),
-    [selectedPoints, selectedSession],
+    () => mergeSessionLatestPoint(selectedPoints, selectedSession, selectedLiveLocation),
+    [selectedPoints, selectedSession, selectedLiveLocation],
   );
   const lastPoint = sortedSelectedPoints.at(-1);
-  const selectedPointCount = selectedSession?.pointCount || selectedPoints.length || 0;
+  const selectedPointCount = selectedSession?.pointCount || selectedPoints.length || (lastPoint ? 1 : 0);
   const stale =
     selectedSession?.status === 'active' &&
-    (!selectedSession.lastPointAt || Date.now() - new Date(selectedSession.lastPointAt).getTime() > ROUTE_STALE_AFTER_MS);
+    (!lastPoint?.recordedAt || Date.now() - new Date(lastPoint.recordedAt).getTime() > ROUTE_STALE_AFTER_MS);
 
   useEffect(() => {
     if (!todayRoutes.length) {
@@ -2055,11 +2094,15 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, onLoadRoutePoints
                 {todayRoutes.map((session) => {
                   const employee = employees.find((row) => row.id === session.employeeId);
                   const points = pointsBySession[session.id] || [];
-                  const routeLastPoint = mergeSessionLatestPoint(points, session).at(-1);
+                  const routeLastPoint = mergeSessionLatestPoint(
+                    points,
+                    session,
+                    getLiveLocationForSession(liveRiderLocations, session),
+                  ).at(-1);
                   const isSelected = selectedSession?.id === session.id;
                   const isStale =
                     session.status === 'active' &&
-                    (!session.lastPointAt || Date.now() - new Date(session.lastPointAt).getTime() > ROUTE_STALE_AFTER_MS);
+                    (!routeLastPoint?.recordedAt || Date.now() - new Date(routeLastPoint.recordedAt).getTime() > ROUTE_STALE_AFTER_MS);
 
                   return (
                     <button
@@ -2787,6 +2830,7 @@ const AdminOverview = ({
   config,
   routeSessions,
   routePoints,
+  liveRiderLocations,
   shopPins,
   routeDeviationEvents,
   fuelPriceHistory,
@@ -2948,6 +2992,7 @@ const AdminOverview = ({
         employees={employees}
         routeSessions={routeSessions}
         routePoints={routePoints}
+        liveRiderLocations={liveRiderLocations}
         onLoadRoutePoints={onLoadRoutePoints}
         onSelectEmployee={onSelectEmployee}
       />
@@ -3569,6 +3614,7 @@ const AdminRoutesPanel = ({
   employees,
   routeSessions,
   routePoints,
+  liveRiderLocations = [],
   shopPins,
   routeTemplates,
   routeDeviationEvents,
@@ -3592,9 +3638,10 @@ const AdminRoutesPanel = ({
     ? employees.find((employee) => employee.id === selectedSession.employeeId)
     : null;
   const selectedPoints = selectedSession ? pointsBySession[selectedSession.id] || [] : [];
+  const selectedLiveLocation = getLiveLocationForSession(liveRiderLocations, selectedSession);
   const selectedDisplayPoints = useMemo(
-    () => mergeSessionLatestPoint(selectedPoints, selectedSession),
-    [selectedPoints, selectedSession],
+    () => mergeSessionLatestPoint(selectedPoints, selectedSession, selectedLiveLocation),
+    [selectedPoints, selectedSession, selectedLiveLocation],
   );
   const selectedPins = selectedSession
     ? getShopPinsForRouteDay(shopPins, selectedSession.employeeId, selectedSession.date, selectedSession.id)
@@ -3711,7 +3758,11 @@ const AdminRoutesPanel = ({
           <div className="space-y-2">
             {rows.slice(0, 30).map((session) => {
               const employee = employees.find((row) => row.id === session.employeeId);
-              const points = mergeSessionLatestPoint(pointsBySession[session.id] || [], session);
+              const points = mergeSessionLatestPoint(
+                pointsBySession[session.id] || [],
+                session,
+                getLiveLocationForSession(liveRiderLocations, session),
+              );
               return (
                 <RouteSessionCard
                   key={session.id}
@@ -5248,6 +5299,7 @@ export default function App() {
   const [readings, setReadings] = useState([]);
   const [routeSessions, setRouteSessions] = useState([]);
   const [routePoints, setRoutePoints] = useState([]);
+  const [liveRiderLocations, setLiveRiderLocations] = useState([]);
   const [shopPins, setShopPins] = useState([]);
   const [routeTemplates, setRouteTemplates] = useState([]);
   const [routeDeviationEvents, setRouteDeviationEvents] = useState([]);
@@ -5317,6 +5369,7 @@ export default function App() {
       setReadings([]);
       setRouteSessions([]);
       setRoutePoints([]);
+      setLiveRiderLocations([]);
       setShopPins([]);
       setRouteTemplates([]);
       setRouteDeviationEvents([]);
@@ -5347,6 +5400,9 @@ export default function App() {
           });
         })
       : null;
+    const unsubscribeLiveRiderLocations = session.role === 'admin'
+      ? subscribeLiveRiderLocations((rows) => setLiveRiderLocations(rows))
+      : null;
     const unsubscribeShopPins = session.role === 'admin'
       ? subscribeShopPins((rows) => setShopPins(rows))
       : null;
@@ -5365,6 +5421,7 @@ export default function App() {
       unsubscribeDailyReviews?.();
       unsubscribeRouteSessions?.();
       unsubscribeRoutePoints?.();
+      unsubscribeLiveRiderLocations?.();
       unsubscribeShopPins?.();
       unsubscribeRouteTemplates?.();
       unsubscribeRouteDeviationEvents?.();
@@ -6186,6 +6243,7 @@ export default function App() {
                 config={config}
                 routeSessions={routeSessions}
                 routePoints={routePoints}
+                liveRiderLocations={liveRiderLocations}
                 shopPins={shopPins}
                 routeDeviationEvents={routeDeviationEvents}
                 fuelPriceHistory={fuelPriceHistory}
@@ -6208,6 +6266,7 @@ export default function App() {
                 employees={employees}
                 routeSessions={routeSessions}
                 routePoints={routePoints}
+                liveRiderLocations={liveRiderLocations}
                 shopPins={shopPins}
                 routeTemplates={routeTemplates}
                 routeDeviationEvents={routeDeviationEvents}
