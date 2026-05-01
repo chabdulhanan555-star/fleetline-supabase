@@ -22,6 +22,40 @@ export const calculateRouteDistanceM = (points) =>
     return total + distanceMeters(rows[index - 1], point);
   }, 0);
 
+export const filterNoisyRoutePoints = (points = [], options = {}) => {
+  const {
+    maxAccuracyM = 120,
+    maxSpeedMps = 38,
+    maxShortJumpM = 320,
+    shortJumpWindowMs = 12000,
+  } = options;
+  const filtered = [];
+
+  for (const point of sortRoutePoints(points)) {
+    const lat = Number(point?.lat);
+    const lng = Number(point?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+    const accuracy = point.accuracyM === null || point.accuracyM === undefined ? null : Number(point.accuracyM);
+    if (accuracy !== null && accuracy > maxAccuracyM) continue;
+
+    const previous = filtered.at(-1);
+    if (previous) {
+      const movedM = distanceMeters(previous, point);
+      const elapsedMs = new Date(point.recordedAt).getTime() - new Date(previous.recordedAt).getTime();
+      const elapsedSeconds = Math.max(0.1, elapsedMs / 1000);
+      const observedSpeedMps = movedM / elapsedSeconds;
+
+      if (elapsedMs > 0 && elapsedMs <= shortJumpWindowMs && movedM > maxShortJumpM) continue;
+      if (elapsedMs > 0 && movedM > 70 && observedSpeedMps > maxSpeedMps) continue;
+    }
+
+    filtered.push(point);
+  }
+
+  return filtered;
+};
+
 export const groupRoutePointsBySession = (points = []) =>
   points.reduce((accumulator, point) => {
     accumulator[point.sessionId] ??= [];

@@ -43,10 +43,12 @@ import {
   buildRoutePointData,
   calculateRouteDistanceM,
   distanceMeters,
+  filterNoisyRoutePoints,
   groupRoutePointsBySession,
   sortRoutePoints,
   thinRoutePoints,
 } from './lib/route-utils.js';
+import { matchRouteToRoad } from './lib/road-matching.js';
 import {
   adminLogin,
   appendRoutePoints,
@@ -1705,13 +1707,66 @@ const RouteMap = ({ points, session, employee }) => {
   const updateFrameRef = useRef(null);
   const fittedRouteRef = useRef({ sessionId: null, pointCount: 0, lastPointKey: '' });
   const [mapStatus, setMapStatus] = useState('loading');
+  const [roadMatch, setRoadMatch] = useState({
+    status: 'raw',
+    provider: 'raw',
+    points: [],
+    message: 'Using clean GPS route.',
+  });
   const routePoints = useMemo(() => sortRoutePoints(points), [points]);
-  const routeDistance = session?.totalDistanceM || calculateRouteDistanceM(routePoints);
-  const visiblePointCount = routePoints.length || session?.pointCount || 0;
-  const lastPoint = routePoints.at(-1);
+  const cleanRoutePoints = useMemo(() => filterNoisyRoutePoints(routePoints), [routePoints]);
+  const displayRoutePoints = roadMatch.status === 'matched' && roadMatch.points.length > 1
+    ? roadMatch.points
+    : cleanRoutePoints;
+  const routeDistance = session?.totalDistanceM || calculateRouteDistanceM(displayRoutePoints);
+  const visiblePointCount = cleanRoutePoints.length || session?.pointCount || 0;
+  const lastPoint = displayRoutePoints.at(-1);
   const lastPointKey = lastPoint
     ? `${lastPoint.recordedAt}:${Number(lastPoint.lat).toFixed(7)}:${Number(lastPoint.lng).toFixed(7)}`
     : '';
+  const roadMatchKey = cleanRoutePoints.length
+    ? `${session?.id ?? 'route'}:${cleanRoutePoints.length}:${cleanRoutePoints.at(-1)?.recordedAt}:${Number(cleanRoutePoints.at(-1)?.lat).toFixed(7)}:${Number(cleanRoutePoints.at(-1)?.lng).toFixed(7)}`
+    : '';
+
+  useEffect(() => {
+    if (cleanRoutePoints.length < 3) {
+      setRoadMatch({
+        status: 'raw',
+        provider: 'raw',
+        points: [],
+        message: cleanRoutePoints.length ? 'Collecting more GPS points for road matching.' : 'No clean GPS points yet.',
+      });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setRoadMatch((current) => ({
+      ...current,
+      status: current.points.length > 1 ? 'matched' : 'matching',
+      message: current.points.length > 1 ? current.message : 'Matching route to roads.',
+    }));
+
+    matchRouteToRoad(cleanRoutePoints, { signal: controller.signal })
+      .then((result) => {
+        setRoadMatch({
+          status: result.provider === 'raw' ? 'raw' : 'matched',
+          provider: result.provider,
+          points: result.provider === 'raw' ? [] : result.points,
+          message: result.message,
+        });
+      })
+      .catch((error) => {
+        if (error?.name === 'AbortError') return;
+        setRoadMatch({
+          status: 'error',
+          provider: 'raw',
+          points: [],
+          message: error instanceof Error ? error.message : 'Road matching failed.',
+        });
+      });
+
+    return () => controller.abort();
+  }, [roadMatchKey]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return undefined;
@@ -1724,7 +1779,7 @@ const RouteMap = ({ points, session, employee }) => {
         if (cancelled || !containerRef.current) return;
 
         maplibreRef.current = maplibre;
-        const initialPoint = routePoints[0];
+        const initialPoint = displayRoutePoints[0];
         const map = new maplibre.Map({
           container: containerRef.current,
           style: ROUTE_MAP_STYLE,
@@ -1790,8 +1845,8 @@ const RouteMap = ({ points, session, employee }) => {
               'circle-stroke-width': 1.5,
             },
           });
-          updateRouteMapData(map, routePoints, maplibre, { fit: true });
-          fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: routePoints.length, lastPointKey };
+          updateRouteMapData(map, displayRoutePoints, maplibre, { fit: true });
+          fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: displayRoutePoints.length, lastPointKey };
           setMapStatus('ready');
         });
 
@@ -1829,13 +1884,13 @@ const RouteMap = ({ points, session, employee }) => {
     updateFrameRef.current = window.requestAnimationFrame(() => {
       const previous = fittedRouteRef.current;
       const sameSession = previous.sessionId === (session?.id ?? null);
-      const pointDelta = Math.abs(routePoints.length - previous.pointCount);
+      const pointDelta = Math.abs(displayRoutePoints.length - previous.pointCount);
       const latestChanged = lastPointKey && lastPointKey !== previous.lastPointKey;
       const shouldFit = !sameSession || previous.pointCount === 0 || pointDelta >= ROUTE_REFIT_POINT_DELTA;
       const shouldFollow = sameSession && session?.status === 'active' && latestChanged;
 
-      updateRouteMapData(map, routePoints, maplibre, { fit: shouldFit, follow: shouldFollow });
-      fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: routePoints.length, lastPointKey };
+      updateRouteMapData(map, displayRoutePoints, maplibre, { fit: shouldFit, follow: shouldFollow });
+      fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: displayRoutePoints.length, lastPointKey };
     });
 
     return () => {
@@ -1843,7 +1898,7 @@ const RouteMap = ({ points, session, employee }) => {
         window.cancelAnimationFrame(updateFrameRef.current);
       }
     };
-  }, [lastPointKey, routePoints, session?.id, session?.status]);
+  }, [displayRoutePoints, lastPointKey, session?.id, session?.status]);
 
   return (
     <div className="route-map-3d surface-3d relative overflow-hidden border border-orange-500/30 bg-zinc-950">
@@ -1866,7 +1921,7 @@ const RouteMap = ({ points, session, employee }) => {
           </div>
         </div>
       ) : null}
-      {routePoints.length === 0 ? (
+      {displayRoutePoints.length === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-8 text-center">
           <div>
             <MapPin className="mx-auto mb-3 h-10 w-10 text-zinc-600" />
@@ -1892,12 +1947,19 @@ const RouteMap = ({ points, session, employee }) => {
           <div className="font-mono text-[9px] uppercase text-zinc-500">Points</div>
           <div className="font-display text-xl leading-none text-white">{visiblePointCount}</div>
         </div>
+        <div className={`mini-surface-3d border bg-black/80 px-3 py-2 ${roadMatch.status === 'matched' ? 'border-green-400/30' : roadMatch.status === 'matching' ? 'border-amber-400/30' : 'border-zinc-700'}`}>
+          <div className="font-mono text-[9px] uppercase text-zinc-500">Road Match</div>
+          <div className={`font-display text-xl leading-none ${roadMatch.status === 'matched' ? 'text-green-300' : roadMatch.status === 'matching' ? 'text-amber-300' : 'text-zinc-300'}`}>
+            {roadMatch.status === 'matched' ? 'On Road' : roadMatch.status === 'matching' ? 'Matching' : 'Raw'}
+          </div>
+        </div>
       </div>
       {lastPoint ? (
         <div className="pointer-events-none absolute bottom-3 left-3 right-3 mini-surface-3d border border-zinc-700 bg-black/85 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400">
           Last GPS: {fmtTime(lastPoint.recordedAt)}
           {` | Lat ${fmtCoordinate(lastPoint.lat)} | Lng ${fmtCoordinate(lastPoint.lng)}`}
           {lastPoint.accuracyM ? ` | Accuracy ${Math.round(lastPoint.accuracyM)}m` : ''}
+          {` | ${roadMatch.message}`}
         </div>
       ) : null}
     </div>
