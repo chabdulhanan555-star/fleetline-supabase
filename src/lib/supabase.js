@@ -12,7 +12,8 @@ const ROUTE_SESSION_HISTORY_DAYS = 190;
 const ROUTE_SESSION_COLUMNS =
   'id, employee_id, date, start_reading_id, end_reading_id, status, started_at, ended_at, last_point_at, point_count, total_distance_m, created_by, created_at, updated_at';
 const ROUTE_POINT_COLUMNS = 'id, session_id, employee_id, recorded_at, lat, lng, accuracy_m, speed_mps, heading, created_at';
-const SHOP_PIN_COLUMNS = 'id, route_session_id, employee_id, name, lat, lng, accuracy_m, pinned_at, created_at';
+const SHOP_PIN_COLUMNS = 'id, route_session_id, employee_id, name, lat, lng, accuracy_m, pinned_at, photo_path, created_at';
+const LEGACY_SHOP_PIN_COLUMNS = 'id, route_session_id, employee_id, name, lat, lng, accuracy_m, pinned_at, created_at';
 const ROUTE_TEMPLATE_COLUMNS =
   'id, employee_id, weekday, name, status, source_start_date, source_end_date, source_pin_count, duplicate_count, approved_by, approved_at, created_at, updated_at';
 const ROUTE_TEMPLATE_STOP_COLUMNS =
@@ -561,6 +562,7 @@ function mapShopPin(row) {
     lng: Number(row.lng),
     accuracyM: row.accuracy_m === null ? null : Number(row.accuracy_m),
     pinnedAt: row.pinned_at,
+    photoPath: row.photo_path ?? null,
     createdAt: row.created_at,
   };
 }
@@ -973,6 +975,22 @@ export function subscribeRoutePoints(callback) {
   return subscribeIncrementalRoutePoints(callback);
 }
 
+async function loadShopPinsWithOptionalPhoto(client) {
+  const queryShopPins = (columns) =>
+    client
+      .from('shop_pins')
+      .select(columns)
+      .order('pinned_at', { ascending: false })
+      .limit(1000);
+
+  const result = await queryShopPins(SHOP_PIN_COLUMNS);
+  const missingPhotoColumn =
+    result.error?.code === '42703' ||
+    String(result.error?.message ?? '').toLowerCase().includes('photo_path');
+
+  return missingPhotoColumn ? queryShopPins(LEGACY_SHOP_PIN_COLUMNS) : result;
+}
+
 export function subscribeShopPins(callback) {
   if (isDemoMode) {
     return demoSubscribe('shopPins', callback);
@@ -980,12 +998,7 @@ export function subscribeShopPins(callback) {
 
   return subscribeTable({
     table: 'shop_pins',
-    query: (client) =>
-      client
-        .from('shop_pins')
-        .select(SHOP_PIN_COLUMNS)
-        .order('pinned_at', { ascending: false })
-        .limit(1000),
+    query: loadShopPinsWithOptionalPhoto,
     callback: (rows) => callback((rows ?? []).map(mapShopPin)),
   });
 }

@@ -3539,6 +3539,7 @@ const AdminRoutesPanel = ({
   deletingRouteId,
   onLoadRoutePoints,
   onDeleteRouteSession,
+  onPreviewPhoto,
   onSaveRouteTemplate,
 }) => {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
@@ -3555,6 +3556,9 @@ const AdminRoutesPanel = ({
     ? employees.find((employee) => employee.id === selectedSession.employeeId)
     : null;
   const selectedPoints = selectedSession ? pointsBySession[selectedSession.id] || [] : [];
+  const selectedPins = selectedSession
+    ? getShopPinsForRouteDay(shopPins, selectedSession.employeeId, selectedSession.date, selectedSession.id)
+    : [];
   const activeRoutes = rows.filter((session) => session.status === 'active');
   const todayRoutes = rows.filter((session) => session.date === today());
   const staleRoutes = activeRoutes.filter(
@@ -3641,11 +3645,14 @@ const AdminRoutesPanel = ({
       ) : null}
 
       {selectedSession ? (
-        <RouteMap
-          session={selectedSession}
-          employee={selectedEmployee}
-          points={selectedPoints}
-        />
+        <>
+          <RouteMap
+            session={selectedSession}
+            employee={selectedEmployee}
+            points={selectedPoints}
+          />
+          <ShopPinProofPanel pins={selectedPins} onPreviewPhoto={onPreviewPhoto} />
+        </>
       ) : (
         <div className="surface-3d border border-dashed border-zinc-800 p-10 text-center">
           <Route className="mx-auto mb-3 h-12 w-12 text-zinc-700" />
@@ -3684,6 +3691,63 @@ const AdminRoutesPanel = ({
     </div>
   );
 };
+
+const ShopPinProofPanel = ({ pins = [], onPreviewPhoto }) => (
+  <div className="surface-3d border border-blue-300/20 bg-zinc-950/90 p-4">
+    <div className="mb-3 flex items-start justify-between gap-3">
+      <div>
+        <div className="font-mono text-[10px] uppercase tracking-widest text-blue-200/80">// Shop Visit Proof</div>
+        <div className="font-display text-2xl leading-none text-white">Pinned Shops</div>
+        <div className="mt-1 text-xs text-zinc-500">Shop coordinates and optional rider photo proof from the mobile app.</div>
+      </div>
+      <div className="ops-metric-pill min-w-[82px] border border-blue-300/20 px-3 py-2 text-right">
+        <div className="font-mono text-[8px] uppercase tracking-widest text-zinc-500">photos</div>
+        <div className="font-display text-2xl leading-none text-blue-100">
+          {pins.filter((pin) => pin.photoPath).length}/{pins.length}
+        </div>
+      </div>
+    </div>
+
+    {pins.length === 0 ? (
+      <div className="mini-surface-3d border border-dashed border-zinc-800 bg-black/40 p-5 text-center text-sm text-zinc-500">
+        No shops pinned for this route session yet.
+      </div>
+    ) : (
+      <div className="grid gap-2 lg:grid-cols-2">
+        {pins.map((pin, index) => (
+          <div key={pin.id} className="mini-surface-3d border border-zinc-800 bg-black/45 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-display text-xl leading-none text-white">
+                  {index + 1}. {pin.name || 'Shop'}
+                </div>
+                <div className="mt-1 font-mono text-[9px] uppercase tracking-widest text-zinc-500">
+                  {fmtTime(pin.pinnedAt)} | {fmtCoordinate(pin.lat)}, {fmtCoordinate(pin.lng)}
+                </div>
+              </div>
+              {pin.photoPath ? (
+                <button
+                  onClick={() => onPreviewPhoto?.(pin.photoPath)}
+                  className="flex shrink-0 items-center gap-1 border border-orange-500/30 bg-orange-500/10 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-orange-300 hover:bg-orange-500/20"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  Photo
+                </button>
+              ) : (
+                <div className="shrink-0 border border-zinc-800 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+                  No Photo
+                </div>
+              )}
+            </div>
+            <div className="mt-2 font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+              Accuracy {pin.accuracyM === null ? '-' : `${Math.round(pin.accuracyM)}m`}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
 
 const RouteDeviationPanel = ({ events, employees, routeSessions }) => {
   const outsideEvents = events.filter((event) => event.eventType === 'outside_route');
@@ -6110,6 +6174,7 @@ export default function App() {
                 deletingRouteId={deletingRouteId}
                 onLoadRoutePoints={loadRoutePointsForSession}
                 onDeleteRouteSession={handleDeleteRouteSession}
+                onPreviewPhoto={handlePreviewPhoto}
                 onSaveRouteTemplate={handleSaveRouteTemplate}
               />
             ) : null}
