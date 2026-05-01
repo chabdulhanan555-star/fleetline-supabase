@@ -1,7 +1,5 @@
-const CACHE_NAME = 'fleetline-v5';
+const CACHE_NAME = 'fleetline-v6';
 const SHELL_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/icons/icon.svg',
 ];
@@ -40,27 +38,31 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-
-      return fetch(request)
+  if (request.mode === 'navigate' || request.destination === 'document') {
+    event.respondWith(
+      fetch(request)
         .then((response) => {
           if (response.ok && url.origin === self.location.origin) {
             const cloned = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', cloned));
           }
           return response;
         })
-        .catch(() => {
-          if (request.mode === 'navigate') {
-            return caches.match('/');
-          }
-          return undefined;
-        });
-    }),
+        .catch(() => caches.match('/index.html')),
+    );
+    return;
+  }
+
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        if (response.ok && url.origin === self.location.origin) {
+          const cloned = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request)),
   );
 });
 
