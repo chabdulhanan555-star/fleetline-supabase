@@ -506,6 +506,43 @@ const getLatestPointFromSession = (session, liveLocation = null) => {
   };
 };
 
+const buildLiveOnlyRouteSessions = (liveLocations = [], routeSessions = []) => {
+  const routeSessionIds = new Set(routeSessions.map((session) => session.id));
+  const routeSessionDayKeys = new Set(
+    routeSessions.map((session) => `${session.employeeId}:${session.date}`),
+  );
+
+  return liveLocations
+    .filter((location) => {
+      if (location.date !== today() || location.status !== 'active') return false;
+      if (!Number.isFinite(Number(location.lat)) || !Number.isFinite(Number(location.lng))) return false;
+      if (location.routeSessionId && routeSessionIds.has(location.routeSessionId)) return false;
+      return !routeSessionDayKeys.has(`${location.employeeId}:${location.date}`);
+    })
+    .map((location) => ({
+      id: `live-${location.employeeId}`,
+      employeeId: location.employeeId,
+      date: location.date,
+      startReadingId: null,
+      endReadingId: null,
+      status: 'active',
+      startedAt: location.recordedAt || location.updatedAt,
+      endedAt: null,
+      lastPointAt: location.recordedAt || location.updatedAt,
+      latestLat: Number(location.lat),
+      latestLng: Number(location.lng),
+      latestAccuracyM: location.accuracyM,
+      latestSpeedMps: location.speedMps,
+      latestHeading: location.heading,
+      pointCount: 1,
+      totalDistanceM: 0,
+      createdBy: null,
+      createdAt: location.updatedAt || location.recordedAt,
+      updatedAt: location.updatedAt || location.recordedAt,
+      isLiveOnly: true,
+    }));
+};
+
 const mergeSessionLatestPoint = (points = [], session, liveLocation = null) => {
   const sorted = sortRoutePoints(points);
   const latest = getLatestPointFromSession(session, liveLocation);
@@ -2026,10 +2063,12 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocation
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const pointsBySession = useMemo(() => groupRoutePointsBySession(routePoints), [routePoints]);
   const todayRoutes = useMemo(
-    () =>
-      routeSessions
+    () => [
+      ...routeSessions
         .filter((session) => session.date === today() && ['active', 'completed'].includes(session.status))
-        .sort((left, right) => {
+        .filter((session) => !session.isLiveOnly),
+      ...buildLiveOnlyRouteSessions(liveRiderLocations, routeSessions),
+    ].sort((left, right) => {
           const leftActive = left.status === 'active' ? 1 : 0;
           const rightActive = right.status === 'active' ? 1 : 0;
           if (leftActive !== rightActive) return rightActive - leftActive;
@@ -2037,7 +2076,7 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocation
           const rightTime = new Date(right.lastPointAt || right.startedAt || right.createdAt || 0).getTime();
           return rightTime - leftTime;
         }),
-    [routeSessions],
+    [liveRiderLocations, routeSessions],
   );
   const activeRoutes = todayRoutes.filter((session) => session.status === 'active');
   const todayRouteKey = todayRoutes.map((session) => session.id).join('|');
@@ -2075,12 +2114,14 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocation
     if (!onLoadRoutePoints) return;
 
     activeRoutes
+      .filter((session) => !session.isLiveOnly)
       .filter((session) => (session.pointCount ?? 0) > (pointsBySession[session.id]?.length ?? 0))
       .slice(0, 6)
       .forEach((session) => onLoadRoutePoints(session.id));
 
     if (
       selectedSession &&
+      !selectedSession.isLiveOnly &&
       (selectedSession.pointCount ?? 0) > (pointsBySession[selectedSession.id]?.length ?? 0)
     ) {
       onLoadRoutePoints(selectedSession.id);
@@ -2094,7 +2135,7 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocation
           <div className="font-mono text-[10px] uppercase tracking-widest text-green-300/80">// Live Rider GPS</div>
           <div className="font-display text-3xl leading-none text-white">Live Rider Map</div>
           <div className="mt-1 text-xs text-zinc-500">
-            Shows the rider route from Start Market until End Market, with the latest coordinates.
+            Shows rider live location first. Route history appears after the Start Market session syncs.
           </div>
         </div>
         <div className="flex gap-2">
@@ -2133,7 +2174,7 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocation
                     {selectedEmployee?.name || 'Unknown rider'}
                   </div>
                   <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-                    {selectedEmployee?.bikePlate || 'No plate'} | {selectedSession.status}
+                    {selectedEmployee?.bikePlate || 'No plate'} | {selectedSession.isLiveOnly ? 'live only' : selectedSession.status}
                   </div>
                 </button>
                 <div className={`h-2.5 w-2.5 rounded-full ${selectedSession.status === 'active' && !stale ? 'bg-green-400 pulse-dot' : stale ? 'bg-amber-400' : 'bg-zinc-500'}`} />
@@ -2194,13 +2235,13 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocation
                         <div className="min-w-0">
                           <div className="truncate font-semibold text-white">{employee?.name || 'Unknown rider'}</div>
                           <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
-                            {fmtTime(routeLastPoint?.recordedAt || session.lastPointAt || session.startedAt)} | {session.status}
+                            {fmtTime(routeLastPoint?.recordedAt || session.lastPointAt || session.startedAt)} | {session.isLiveOnly ? 'live only' : session.status}
                           </div>
                         </div>
                         <div className={`mt-1 h-2 w-2 rounded-full ${session.status === 'active' && !isStale ? 'bg-green-400 pulse-dot' : isStale ? 'bg-amber-400' : 'bg-zinc-500'}`} />
                       </div>
                       <div className="mt-2 font-mono text-[9px] uppercase text-zinc-500">
-                        {fmtCoordinate(routeLastPoint?.lat)}, {fmtCoordinate(routeLastPoint?.lng)} | {session.pointCount || points.length} pts
+                        {fmtCoordinate(routeLastPoint?.lat)}, {fmtCoordinate(routeLastPoint?.lng)} | {session.isLiveOnly ? 'live' : `${session.pointCount || points.length} pts`}
                       </div>
                     </button>
                   );
