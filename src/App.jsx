@@ -140,7 +140,6 @@ const ROUTE_MIN_DISTANCE_M = 75;
 const ROUTE_STALE_AFTER_MS = 30 * 60 * 1000;
 const ROUTE_RENDER_LINE_LIMIT = 450;
 const ROUTE_RENDER_MARKER_LIMIT = 110;
-const ROUTE_REFIT_POINT_DELTA = 18;
 const ROUTE_MAP_FALLBACK_CENTER = [74.3587, 31.5204];
 const ROUTE_POINTS_MEMORY_LIMIT = 5000;
 const ROUTE_MAP_LOAD_TIMEOUT_MS = 6500;
@@ -1197,6 +1196,26 @@ const ThemeStyles = () => (
     .route-map-3d .maplibregl-ctrl-attrib a {
       color: #f59e0b;
     }
+    .route-map-3d .maplibregl-ctrl-group {
+      overflow: hidden;
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 14px;
+      background: rgba(5,8,12,0.88);
+      box-shadow: 0 18px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,253,247,0.08);
+    }
+    .route-map-3d .maplibregl-ctrl button {
+      background-color: rgba(5,8,12,0.88);
+      color: #fef3c7;
+    }
+    .route-map-3d .maplibregl-ctrl button + button {
+      border-top: 1px solid rgba(245,158,11,0.18);
+    }
+    .route-map-3d .maplibregl-ctrl button:hover {
+      background-color: rgba(217,119,6,0.24);
+    }
+    .route-map-3d .maplibregl-ctrl-icon {
+      filter: invert(1) sepia(0.5) saturate(2);
+    }
     .table-3d {
       border-radius: 18px;
       box-shadow: 0 24px 48px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,253,247,0.08);
@@ -1743,6 +1762,7 @@ const RouteMap = ({ points, session, employee }) => {
   const maplibreRef = useRef(null);
   const updateFrameRef = useRef(null);
   const fittedRouteRef = useRef({ sessionId: null, pointCount: 0, lastPointKey: '' });
+  const [followLive, setFollowLive] = useState(true);
   const [mapStatus, setMapStatus] = useState('loading');
   const [roadMatch, setRoadMatch] = useState({
     status: 'raw',
@@ -1839,7 +1859,12 @@ const RouteMap = ({ points, session, employee }) => {
           fadeDuration: 0,
           refreshExpiredTiles: false,
           renderWorldCopies: false,
-          interactive: false,
+          interactive: true,
+          dragPan: true,
+          scrollZoom: true,
+          boxZoom: true,
+          doubleClickZoom: true,
+          touchZoomRotate: true,
           dragRotate: false,
           pitchWithRotate: false,
           canvasContextAttributes: {
@@ -1849,7 +1874,12 @@ const RouteMap = ({ points, session, employee }) => {
         });
 
         mapRef.current = map;
+        map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
         map.addControl(new maplibre.AttributionControl({ compact: true }), 'bottom-right');
+        map.on('dragstart', () => setFollowLive(false));
+        map.on('zoomstart', (event) => {
+          if (event.originalEvent) setFollowLive(false);
+        });
 
         map.once('load', () => {
           if (cancelled) return;
@@ -1936,10 +1966,9 @@ const RouteMap = ({ points, session, employee }) => {
     updateFrameRef.current = window.requestAnimationFrame(() => {
       const previous = fittedRouteRef.current;
       const sameSession = previous.sessionId === (session?.id ?? null);
-      const pointDelta = Math.abs(displayRoutePoints.length - previous.pointCount);
       const latestChanged = lastPointKey && lastPointKey !== previous.lastPointKey;
-      const shouldFit = !sameSession || previous.pointCount === 0 || pointDelta >= ROUTE_REFIT_POINT_DELTA;
-      const shouldFollow = sameSession && session?.status === 'active' && latestChanged;
+      const shouldFit = !sameSession || previous.pointCount === 0;
+      const shouldFollow = followLive && sameSession && session?.status === 'active' && latestChanged;
 
       updateRouteMapData(map, displayRoutePoints, maplibre, { fit: shouldFit, follow: shouldFollow });
       fittedRouteRef.current = { sessionId: session?.id ?? null, pointCount: displayRoutePoints.length, lastPointKey };
@@ -1950,7 +1979,16 @@ const RouteMap = ({ points, session, employee }) => {
         window.cancelAnimationFrame(updateFrameRef.current);
       }
     };
-  }, [displayRoutePoints, lastPointKey, session?.id, session?.status]);
+  }, [displayRoutePoints, followLive, lastPointKey, session?.id, session?.status]);
+
+  const handleFollowLive = () => {
+    setFollowLive(true);
+    const map = mapRef.current;
+    const last = displayRoutePoints.at(-1);
+    if (map && last) {
+      map.easeTo({ center: [last.lng, last.lat], zoom: Math.max(map.getZoom(), 15), duration: 280 });
+    }
+  };
 
   return (
     <div className="route-map-3d surface-3d relative overflow-hidden border border-orange-500/30 bg-zinc-950">
@@ -2006,6 +2044,21 @@ const RouteMap = ({ points, session, employee }) => {
           </div>
         </div>
       </div>
+      {lastPoint ? (
+        <div className="absolute right-3 top-[72px] z-10 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handleFollowLive}
+            className={`mini-surface-3d border px-3 py-2 font-mono text-[9px] uppercase tracking-widest shadow-xl transition-colors ${
+              followLive
+                ? 'border-green-400/35 bg-green-500/15 text-green-200'
+                : 'border-orange-500/35 bg-black/85 text-amber-300 hover:bg-orange-500/15'
+            }`}
+          >
+            {followLive ? 'Following Live' : 'Follow Rider'}
+          </button>
+        </div>
+      ) : null}
       {lastPoint ? (
         <div className="pointer-events-none absolute bottom-3 left-3 right-3 mini-surface-3d border border-zinc-700 bg-black/85 px-3 py-2 font-mono text-[10px] uppercase text-zinc-400">
           Last GPS: {fmtTime(lastPoint.recordedAt)}
@@ -2163,21 +2216,33 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocation
           <RouteMap session={selectedSession} employee={selectedEmployee} points={sortedSelectedPoints} />
 
           <div className="space-y-3">
-            <div className={`mini-surface-3d border p-3 ${stale ? 'border-amber-400/30 bg-amber-500/10' : 'border-green-400/25 bg-black/45'}`}>
+            <div
+              role="button"
+              tabIndex={selectedEmployee ? 0 : -1}
+              onClick={() => selectedEmployee && onSelectEmployee?.(selectedEmployee.id)}
+              onKeyDown={(event) => {
+                if ((event.key === 'Enter' || event.key === ' ') && selectedEmployee) {
+                  event.preventDefault();
+                  onSelectEmployee?.(selectedEmployee.id);
+                }
+              }}
+              className={`mini-surface-3d cursor-pointer border p-3 transition-colors ${
+                stale ? 'border-amber-400/30 bg-amber-500/10 hover:border-amber-300/50' : 'border-green-400/25 bg-black/45 hover:border-green-300/45'
+              }`}
+            >
               <div className="flex items-start justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => selectedEmployee && onSelectEmployee?.(selectedEmployee.id)}
-                  className="min-w-0 text-left"
-                >
+                <div className="min-w-0 text-left">
                   <div className="truncate font-display text-2xl leading-none text-white">
                     {selectedEmployee?.name || 'Unknown rider'}
                   </div>
                   <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
                     {selectedEmployee?.bikePlate || 'No plate'} | {selectedSession.isLiveOnly ? 'live only' : selectedSession.status}
                   </div>
-                </button>
-                <div className={`h-2.5 w-2.5 rounded-full ${selectedSession.status === 'active' && !stale ? 'bg-green-400 pulse-dot' : stale ? 'bg-amber-400' : 'bg-zinc-500'}`} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`h-2.5 w-2.5 rounded-full ${selectedSession.status === 'active' && !stale ? 'bg-green-400 pulse-dot' : stale ? 'bg-amber-400' : 'bg-zinc-500'}`} />
+                  <ChevronRight className="h-4 w-4 text-zinc-500" />
+                </div>
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -2223,27 +2288,43 @@ const LiveRiderMap = ({ employees, routeSessions, routePoints, liveRiderLocation
                     (!routeLastPoint?.recordedAt || Date.now() - new Date(routeLastPoint.recordedAt).getTime() > ROUTE_STALE_AFTER_MS);
 
                   return (
-                    <button
+                    <div
                       key={session.id}
-                      type="button"
-                      onClick={() => setSelectedSessionId(session.id)}
                       className={`mini-surface-3d w-full border p-3 text-left transition-colors ${
                         isSelected ? 'border-orange-500 bg-orange-500/10' : 'border-zinc-800 bg-black/40 hover:border-orange-500/50'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSessionId(session.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
                           <div className="truncate font-semibold text-white">{employee?.name || 'Unknown rider'}</div>
                           <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
                             {fmtTime(routeLastPoint?.recordedAt || session.lastPointAt || session.startedAt)} | {session.isLiveOnly ? 'live only' : session.status}
                           </div>
+                        </button>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <div className={`h-2 w-2 rounded-full ${session.status === 'active' && !isStale ? 'bg-green-400 pulse-dot' : isStale ? 'bg-amber-400' : 'bg-zinc-500'}`} />
+                          <button
+                            type="button"
+                            onClick={() => employee && onSelectEmployee?.(employee.id)}
+                            className="rounded-full border border-orange-500/30 px-2 py-1 font-mono text-[8px] uppercase tracking-widest text-amber-300 hover:bg-orange-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled={!employee}
+                          >
+                            Open
+                          </button>
                         </div>
-                        <div className={`mt-1 h-2 w-2 rounded-full ${session.status === 'active' && !isStale ? 'bg-green-400 pulse-dot' : isStale ? 'bg-amber-400' : 'bg-zinc-500'}`} />
                       </div>
-                      <div className="mt-2 font-mono text-[9px] uppercase text-zinc-500">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSessionId(session.id)}
+                        className="mt-2 block w-full text-left font-mono text-[9px] uppercase text-zinc-500"
+                      >
                         {fmtCoordinate(routeLastPoint?.lat)}, {fmtCoordinate(routeLastPoint?.lng)} | {session.isLiveOnly ? 'live' : `${session.pointCount || points.length} pts`}
-                      </div>
-                    </button>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
