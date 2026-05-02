@@ -7,11 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "supabase": "supabase",
-    "supabase:login": "supabase login",
-    "supabase:link": "supabase link",
-    "supabase:db:push": "supabase db push",
-    "supabase:functions:deploy": "supabase functions deploy rider-login rider-live-location --no-verify-jwt && supabase functions deploy cleanup-old-photos --no-verify-jwt && supabase functions deploy invite-admin reset-rider-pin upsert-employee delete-employee delete-reading"
+    "supabase": "npx supabase@2.95.1",
+    "supabase:login": "npx supabase@2.95.1 login",
+    "supabase:link": "npx supabase@2.95.1 link",
+    "supabase:db:push": "npx supabase@2.95.1 db push",
+    "supabase:functions:deploy": "npx supabase@2.95.1 functions deploy rider-login rider-live-location --no-verify-jwt && npx supabase@2.95.1 functions deploy cleanup-old-photos --no-verify-jwt && npx supabase@2.95.1 functions deploy invite-admin reset-rider-pin upsert-employee delete-employee delete-reading"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.104.0",
@@ -25,7 +25,6 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
     "@vitejs/plugin-react": "^6.0.1",
-    "supabase": "^2.95.1",
     "tailwindcss": "^4.1.0",
     "vite": "^8.0.9"
   }
