@@ -3,9 +3,9 @@
   "petrol": 399.86,
   "diesel": 399.58,
   "currency": "PKR",
-  "fetchedAt": "2026-05-02T08:50:38.401Z",
+  "fetchedAt": "2026-05-02T22:06:28.757Z",
   "source": "PSO",
   "sourceUrl": "https://www.psopk.com/",
   "error": null,
-  "lastSuccessfulFetch": "2026-05-02T08:50:38.401Z"
+  "lastSuccessfulFetch": "2026-05-02T22:06:28.757Z"
 }
