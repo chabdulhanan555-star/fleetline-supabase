@@ -807,6 +807,11 @@ export const supabase = adminClient;
 
 export async function getCurrentSession() {
   if (isDemoMode) {
+    if (demoSession?.role === 'rider') {
+      writeStoredDemoSession(null);
+      return null;
+    }
+
     return demoSession;
   }
 
@@ -824,16 +829,7 @@ export async function getCurrentSession() {
   }
 
   if (riderSession?.accessToken && riderSession?.employee) {
-    if (riderSession.expiresAt && riderSession.expiresAt <= Date.now()) {
-      writeStoredRiderSession(null);
-      return null;
-    }
-
-    return {
-      role: 'rider',
-      employee: riderSession.employee,
-      accessToken: riderSession.accessToken,
-    };
+    writeStoredRiderSession(null);
   }
 
   return null;

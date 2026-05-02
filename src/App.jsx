@@ -65,7 +65,6 @@ import {
   listRoutePointsForSession,
   onSessionChange,
   resetRiderPin,
-  riderLogin,
   saveConfig,
   saveDailyReview,
   saveEmployee,
@@ -2372,19 +2371,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}
   </div>
 );
 
-const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => {
-  const [mode, setMode] = useState('rider');
-  const [username, setUsername] = useState('');
-  const [pin, setPin] = useState('');
+const LoginView = ({ onAdminLogin, loading, error, demoMode }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  const handleRiderSubmit = async () => {
-    if (!username.trim() || !/^\d{4}$/.test(pin)) {
-      return;
-    }
-    await onRiderLogin(username, pin);
-  };
 
   return (
     <div className="grid-bg flex min-h-screen flex-col bg-black text-white font-body">
@@ -2413,89 +2402,40 @@ const LoginView = ({ onAdminLogin, onRiderLogin, loading, error, demoMode }) => 
 
           {demoMode ? (
             <div className="mb-4 border border-amber-500/30 bg-amber-500/10 p-3 font-mono text-[10px] uppercase tracking-widest text-amber-200">
-              Local demo mode: admin accepts any email/password. Rider PIN is 1234.
+              Local demo mode: admin accepts any email/password.
             </div>
           ) : null}
 
-          {mode === 'rider' ? (
-            <div>
-              <div className="surface-3d mb-4 border border-orange-500/30 bg-orange-500/5 p-5">
-                <User className="mb-3 h-8 w-8 text-orange-500" />
-                <div className="mb-1 font-display text-2xl text-white">Rider Login</div>
-                <div className="mb-4 text-sm text-zinc-400">Enter the username and PIN given by your admin.</div>
-                <Input
-                  label="Username"
-                  icon={Hash}
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value.toLowerCase().replace(/\s/g, ''))}
-                  placeholder="ali.hassan"
-                />
-                <Input
-                  label="4-digit PIN"
-                  icon={KeyRound}
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={pin}
-                  onChange={(event) => setPin(event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
-                  placeholder="****"
-                />
-              </div>
-              <button
-                onClick={handleRiderSubmit}
-                disabled={loading || !username.trim() || pin.length !== 4}
-                className="button-3d button-3d-primary glow-orange w-full py-3 font-display text-lg tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {loading ? 'VERIFYING...' : 'ENTER DASHBOARD ->'}
-              </button>
-              <button
-                onClick={() => setMode('admin')}
-                className="mini-surface-3d mt-4 flex w-full items-center justify-center gap-2 border border-amber-500/50 bg-black py-3 text-amber-400 transition-colors hover:bg-amber-500/10"
-              >
-                <Shield className="h-4 w-4" />
-                <span className="font-display tracking-widest">ADMIN ACCESS</span>
-              </button>
+          <div>
+            <div className="surface-3d mb-4 border border-amber-500/30 bg-amber-500/5 p-5">
+              <Shield className="mb-3 h-8 w-8 text-amber-400" />
+              <div className="mb-1 font-display text-2xl text-white">Admin Login</div>
+              <div className="mb-4 text-sm text-zinc-400">Email and password from Supabase Auth.</div>
+              <Input
+                label="Email"
+                icon={MessageCircle}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="admin@example.com"
+              />
+              <Input
+                label="Password"
+                icon={Shield}
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="********"
+              />
             </div>
-          ) : null}
-
-          {mode === 'admin' ? (
-            <div>
-              <button
-                onClick={() => setMode('rider')}
-                className="mb-4 flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-amber-500/70 transition-colors hover:text-orange-500"
-              >
-                <ArrowLeft className="h-3 w-3" /> Rider Login
-              </button>
-              <div className="surface-3d mb-4 border border-amber-500/30 bg-amber-500/5 p-5">
-                <Shield className="mb-3 h-8 w-8 text-amber-400" />
-                <div className="mb-1 font-display text-2xl text-white">Admin Login</div>
-                <div className="mb-4 text-sm text-zinc-400">Email and password from Supabase Auth.</div>
-                <Input
-                  label="Email"
-                  icon={MessageCircle}
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="admin@example.com"
-                />
-                <Input
-                  label="Password"
-                  icon={Shield}
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="********"
-                />
-              </div>
-              <button
-                onClick={() => onAdminLogin(email, password)}
-                disabled={loading || !email || !password}
-                className="button-3d button-3d-primary glow-orange w-full py-3 font-display text-lg tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {loading ? 'AUTHENTICATING...' : 'ADMIN AUTHENTICATE ->'}
-              </button>
-            </div>
-          ) : null}
+            <button
+              onClick={() => onAdminLogin(email, password)}
+              disabled={loading || !email || !password}
+              className="button-3d button-3d-primary glow-orange w-full py-3 font-display text-lg tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {loading ? 'AUTHENTICATING...' : 'ADMIN AUTHENTICATE ->'}
+            </button>
+          </div>
         </div>
       </div>
       <div className="p-5 text-center font-mono text-[10px] uppercase tracking-widest text-zinc-600">
@@ -6050,20 +5990,6 @@ export default function App() {
     }
   };
 
-  const handleRiderLogin = async (username, pin) => {
-    setAuthLoading(true);
-    setAuthError('');
-    try {
-      await riderLogin(username, pin);
-      setRiderTab('today');
-      showToast('Rider session started.', 'success');
-    } catch (error) {
-      setAuthError(error.message || 'Rider sign-in failed.');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const handleLogout = async () => {
     stopRouteWatch();
     await signOut();
@@ -6279,7 +6205,6 @@ export default function App() {
         <Toast toast={toast} />
         <LoginView
           onAdminLogin={handleAdminLogin}
-          onRiderLogin={handleRiderLogin}
           loading={authLoading}
           error={authError}
           demoMode={isDemoMode}
